@@ -1,0 +1,30 @@
+# Python cache & build artifacts
+__pycache__/
+*.py[cod]
+*.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environment
+.env
+venv/
+env/
+ENV/
+.venv/
+
+# Large raw dataset files
+data/raw/*.csv
+data/raw/*.pcap
+data/raw/*.pcapng
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS temporary files
+Thumbs.db
+Desktop.ini
+.DS_Store

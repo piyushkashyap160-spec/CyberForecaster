@@ -1,0 +1,86 @@
+project:
+  name: CyberForecaster
+  version: 1.0.0
+  tagline: "From Intrusion Detection to Attack Forecasting"
+  description: "AI-based Network Attack Forecasting from Network Traffic Data for NTRO / SIH 2026"
+
+data:
+  dataset_name: "CIC-IDS2018-Demo"
+  demo_csv_path: "data/demo/demo_cicids2018.csv"
+  demo_pcap_path: "data/demo/demo_sample.pcap"
+  window_seconds: 5
+  time_col: "Timestamp"
+  label_col: "Label"
+
+sequence:
+  sequence_length: 10
+  forecast_horizon: 5
+
+features:
+  state_dim: 23
+  feature_names:
+    - total_packets
+    - total_bytes
+    - unique_src_ips
+    - unique_dst_ips
+    - unique_dst_ports
+    - tcp_ratio
+    - udp_ratio
+    - syn_ratio
+    - ack_ratio
+    - rst_ratio
+    - fin_ratio
+    - mean_packet_size
+    - packet_size_variance
+    - mean_IAT
+    - IAT_variance
+    - max_IAT
+    - retransmission_rate
+    - ttl_mean
+    - ttl_variance
+    - inbound_outbound_ratio
+    - failed_connection_rate
+    - port_entropy
+    - connection_rate
+
+model:
+  type: lstm
+  input_size: 23
+  hidden_size: 128
+  num_layers: 2
+  dropout: 0.2
+  num_stages: 6
+  weights_path: "models_weights/lstm_world_model.pt"
+  scaler_path: "models_weights/scaler.joblib"
+  baseline_path: "models_weights/baseline_lr.joblib"
+
+training:
+  batch_size: 32
+  learning_rate: 0.001
+  epochs: 25
+  seed: 42
+  train_split: 0.70
+  val_split: 0.15
+  test_split: 0.15
+  weight_decay: 0.0001
+  loss_weights:
+    state_prediction: 1.0
+    attack_prob: 0.5
+    stage_class: 0.5
+
+forecasting:
+  warning_threshold: 0.70
+  critical_threshold: 0.85
+  horizon_steps: 5
+
+explainability:
+  method: shap
+  num_background_samples: 50
+
+stages:
+  0: "Normal"
+  1: "Reconnaissance"
+  2: "Initial Access"
+  3: "Lateral Movement"
+  4: "Command & Control"
+  5: "Exfiltration"
