@@ -437,8 +437,11 @@ def main():
     elif page == "5. Explainability":
         st.subheader("🧠 Model Explainability & Feature Attribution")
 
-        explainer = ModelExplainer(lstm_model, scaler)
+        from explainability.shap_explainer import GradientSaliencyExplainer
+        explainer = GradientSaliencyExplainer(active_model_obj, scaler)
         explanation = explainer.explain_instance(current_seq_orig)
+
+        st.info(f"ℹ️ **Explanation Method:** {explanation['method']}\n\n*Note: This view displays fast real-time gradient saliency attributions. Deep offline SHAP KernelExplainer analysis is available for offline batch reporting.*")
 
         top_feats = explanation['top_features']
         top_df = pd.DataFrame(top_feats)
@@ -448,7 +451,7 @@ def main():
             x='attribution',
             y='feature',
             orientation='h',
-            title="Top 10 Feature Contributions to Predicted Attack Risk S(t+1)",
+            title=f"Top 10 Feature Contributions to Predicted Attack Risk S(t+1) [{selected_model_name}]",
             labels={'attribution': 'Attribution Weight', 'feature': 'Network State Feature'},
             color='attribution',
             color_continuous_scale=px.colors.diverging.Tealrose,
@@ -486,53 +489,66 @@ def main():
 
     # PAGE 7: MODEL PERFORMANCE & COMPARISON
     elif page == "7. Model Performance":
-        st.subheader("📊 Comparative Benchmark Evaluation (3 Models)")
+        st.subheader("📊 Comparative Benchmark Evaluation (4 Models)")
 
-        comp_path = "experiments/results/benchmark_comparison.json"
+        comp_path = "experiments/results/model_comparison.json"
+        if not os.path.exists(comp_path):
+            comp_path = "experiments/results/demo_results.json"
+
         if os.path.exists(comp_path):
             with open(comp_path, "r") as f:
                 comp_data = json.load(f)
 
             meta = comp_data.get('evaluation_metadata', {})
-            m1 = comp_data.get('Model_1_Logistic_Regression_Baseline', {})
-            m2 = comp_data.get('Model_2_Temporal_LSTM_WorldModel', {})
-            m3 = comp_data.get('Model_3_Temporal_GNN_WorldModel', {})
+            m1 = comp_data.get('Model_1_Static_Logistic_Regression', comp_data.get('Model_1_Logistic_Regression_Baseline', {}))
+            m2 = comp_data.get('Model_2_Temporal_Logistic_Regression', {})
+            m3 = comp_data.get('Model_3_Temporal_LSTM_WorldModel', comp_data.get('Model_2_Temporal_LSTM_WorldModel', {}))
+            m4 = comp_data.get('Model_4_Temporal_GNN_WorldModel', comp_data.get('Model_3_Temporal_GNN_WorldModel', {}))
 
             st.info(f"**Evaluated Dataset:** {meta.get('dataset')}\n\n**Test Samples:** {meta.get('test_samples')} ({meta.get('benign_test_samples')} Benign / {meta.get('attack_test_samples')} Attack)")
 
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3, col4 = st.columns(4)
             with col1:
-                st.markdown("### 🔹 Model 1: Logistic Regression")
+                st.markdown("### 🔹 Baseline A: Static LR")
                 st.write(f"- **Precision:** {m1.get('Precision')}")
                 st.write(f"- **Recall:** {m1.get('Recall')}")
                 st.write(f"- **F1-Score:** {m1.get('F1_Score')}")
                 st.write(f"- **FPR:** {m1.get('FPR')}")
 
             with col2:
-                st.markdown("### 🏆 Model 2: Temporal LSTM World Model")
+                st.markdown("### 📈 Baseline B: Temporal LR")
                 st.write(f"- **Precision:** {m2.get('Precision')}")
                 st.write(f"- **Recall:** {m2.get('Recall')}")
                 st.write(f"- **F1-Score:** {m2.get('F1_Score')}")
                 st.write(f"- **FPR:** {m2.get('FPR')}")
-                st.write(f"- **Next-State MAE:** {m2.get('NextState_MAE')}")
-                st.write(f"- **Next-State RMSE:** {m2.get('NextState_RMSE')}")
 
             with col3:
-                st.markdown("### 🕸️ Model 3: Temporal GNN + LSTM World Model")
+                st.markdown("### 🏆 Proposed: Temporal LSTM")
                 st.write(f"- **Precision:** {m3.get('Precision')}")
                 st.write(f"- **Recall:** {m3.get('Recall')}")
                 st.write(f"- **F1-Score:** {m3.get('F1_Score')}")
                 st.write(f"- **FPR:** {m3.get('FPR')}")
-                st.write(f"- **Next-State MAE:** {m3.get('NextState_MAE')}")
                 st.write(f"- **Next-State RMSE:** {m3.get('NextState_RMSE')}")
 
+            with col4:
+                st.markdown("### 🕸️ Experimental: Temporal GNN")
+                st.write(f"- **Precision:** {m4.get('Precision')}")
+                st.write(f"- **Recall:** {m4.get('Recall')}")
+                st.write(f"- **F1-Score:** {m4.get('F1_Score')}")
+                st.write(f"- **FPR:** {m4.get('FPR')}")
+                st.write(f"- **Next-State RMSE:** {m4.get('NextState_RMSE')}")
+
             st.markdown("---")
-            st.markdown("### Side-by-Side Comparison Matrix")
+            st.markdown("### Side-by-Side 4-Model Comparison Matrix")
             comp_table = pd.DataFrame([
-                {"Model": "1. Logistic Regression Baseline", **m1},
-                {"Model": "2. Temporal LSTM World Model", **m2},
-                {"Model": "3. Temporal GNN + LSTM World Model", **m3}
+                {"Model": "Baseline A (Static LR S(t))", **m1},
+                {"Model": "Baseline B (Temporal LR S(t-9)...S(t))", **m2},
+                {"Model": "Proposed (Temporal LSTM World Model)", **m3},
+                {"Model": "Experimental (Temporal GNN + LSTM)", **m4}
             ])
+            st.dataframe(comp_table, use_container_width=True)
+        else:
+            st.info("Run model comparison script (`python training/compare_models.py`) to generate comparative benchmarks.")
             st.dataframe(comp_table, use_container_width=True)
         else:
             st.info("Run model comparison script (`python training/compare_models.py`) to generate comparative benchmarks.")

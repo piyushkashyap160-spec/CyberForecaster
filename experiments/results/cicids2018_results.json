@@ -1,0 +1,12 @@
+{
+    "status": "pending_dataset",
+    "message": "Raw CIC-IDS2018 CSV dataset files were not found in data/raw/. Real-dataset evaluation remains pending.",
+    "instructions": "Place official CIC-IDS2018 CSV files into data/raw/ and execute 'python training/run_cicids2018_pipeline.py'.",
+    "models_evaluated": [
+        "Static Logistic Regression",
+        "Temporal Logistic Regression",
+        "Temporal LSTM World Model",
+        "Temporal GNN World Model"
+    ],
+    "synthetic_demo_available": true
+}

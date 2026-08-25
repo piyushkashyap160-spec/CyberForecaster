@@ -49,9 +49,14 @@ def encode_window_to_state(df_window: pd.DataFrame, window_seconds: float = 5.0)
         # Majority or maximum stage in window
         stage = int(df_window['Stage'].mode()[0]) if not df_window['Stage'].empty else 0
         is_attack = 1 if stage > 0 else 0
-    elif 'Label' in df_window.columns:
-        labels = df_window['Label'].astype(str)
-        is_attack = 1 if any(l.lower() != 'benign' for l in labels) else 0
+    elif 'Label' in df_window.columns and not df_window['Label'].empty:
+        # Find non-benign label or mode label
+        from preprocessing.stage_mapper import map_label_to_stage
+        non_benign = [l for l in df_window['Label'].astype(str) if l.lower() != 'benign']
+        target_label = non_benign[0] if non_benign else df_window['Label'].iloc[0]
+        mapped_info = map_label_to_stage(target_label)
+        is_attack = mapped_info['is_attack']
+        stage = mapped_info['stage_id']
 
     return {
         'state_dict': state_dict,
