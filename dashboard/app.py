@@ -9,6 +9,82 @@ import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 import networkx as nx
+import socket
+import requests
+import subprocess
+import atexit
+import time
+
+def check_port(port=8000):
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.bind(("127.0.0.1", port))
+        s.close()
+        return False  # Port is free
+    except socket.error:
+        return True  # Port is in use
+
+def start_cyclone_backend():
+    if not check_port(8000):
+        backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "Cyclone", "backend"))
+        server_py = os.path.join(backend_dir, "server.py")
+        
+        cmd = [sys.executable, "server.py"]
+        startupinfo = None
+        if os.name == 'nt':
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            
+        p = subprocess.Popen(
+            cmd,
+            cwd=backend_dir,
+            startupinfo=startupinfo,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        atexit.register(p.terminate)
+        
+        for _ in range(5):
+            time.sleep(1)
+            if check_port(8000):
+                break
+
+def flows_to_dataframe(flows: list) -> pd.DataFrame:
+    """Converts a list of flows from Cyclone API to a pandas DataFrame for CyberForecaster."""
+    records = []
+    for f in flows:
+        proto_str = str(f.get("protocol", "TCP")).upper()
+        if proto_str == "TCP":
+            proto_num = 6
+        elif proto_str == "UDP":
+            proto_num = 17
+        elif proto_str == "ICMP":
+            proto_num = 1
+        else:
+            proto_num = 6
+            
+        records.append({
+            "Timestamp": pd.to_datetime(f.get("timestamp")),
+            "Src_IP": f.get("src_ip", "0.0.0.0"),
+            "Dst_IP": f.get("dst_ip", "0.0.0.0"),
+            "Src_Port": f.get("src_port", 0),
+            "Dst_Port": f.get("dst_port", 0),
+            "Protocol": proto_num,
+            "Tot_Pkts": f.get("packet_count", 1),
+            "Tot_Bytes": f.get("byte_count", 0),
+            "Flow_Duration": f.get("duration", 0.001),
+            "Label": f.get("attack_type", "Benign"),
+            "SYN_Cnt": f.get("syn_count", 0),
+            "ACK_Cnt": f.get("ack_count", 0),
+            "RST_Cnt": f.get("rst_count", 0),
+            "FIN_Cnt": f.get("fin_count", 0),
+            "PSH_Cnt": 0,
+            "URG_Cnt": 0,
+        })
+    df = pd.DataFrame(records)
+    if not df.empty:
+        df = df.sort_values(by='Timestamp').reset_index(drop=True)
+    return df
 
 # Ensure project root is in sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -46,6 +122,23 @@ st.markdown("""
         background-color: #0B0E14;
         color: #E2E8F0;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    /* Prevent Streamlit from dimming elements during rerun/loading */
+    div[data-testid="stAppViewContainer"] {
+        opacity: 1 !important;
+        filter: none !important;
+        transition: none !important;
+    }
+    /* Hide the top colored loading/running bar decoration */
+    [data-testid="stDecoration"] {
+        display: none !important;
+        background: none !important;
+        height: 0px !important;
+    }
+    /* Hide the top-right status spinner widget */
+    [data-testid="stStatusWidget"] {
+        display: none !important;
+        visibility: hidden !important;
     }
     .main .block-container {
         padding-top: 1.5rem;
@@ -229,14 +322,916 @@ def main():
 
     st.sidebar.markdown("---")
 
-    # 2. DATA INGESTION SECTION
-    st.sidebar.markdown('<div class="sidebar-section-header">📡 DATA INGESTION</div>', unsafe_allow_html=True)
-    data_source = st.sidebar.radio(
-        "Select Input Mode",
-        ["Demo Dataset (CSV)", "Upload CSV", "Upload PCAP"],
+    # Set default data_source internally, removing it from sidebar
+    data_source = "Demo Dataset (CSV)"
+
+    # 4. NAVIGATION SECTION
+    st.sidebar.markdown('<div class="sidebar-section-header">🧭 NAVIGATION</div>', unsafe_allow_html=True)
+    page = st.sidebar.radio(
+        "Navigation Menu",
+        [
+            "Live Network Monitoring",
+            "1. Overview",
+            "2. Attack Forecast",
+            "3. Attack Progression",
+            "4. Network Graph Topology",
+            "5. Explainability",
+            "6. Traffic Explorer",
+            "7. Model Performance"
+        ],
         label_visibility="collapsed"
     )
 
+    # ----------------------------------------------------
+    # SOC TOP HEADER BAR
+    # ----------------------------------------------------
+    st.markdown(f"""
+    <div style="background: linear-gradient(90deg, #111722 0%, #1A2332 100%); padding: 18px 24px; border-radius: 10px; border-left: 5px solid #38BDF8; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+        <div>
+            <h1 style="margin: 0; color: #FFFFFF; font-size: 24px; font-weight: 700; letter-spacing: 0.5px;">CyberForecaster SOC</h1>
+            <p style="margin: 4px 0 0 0; color: #94A3B8; font-size: 13px;">AI-Based Predictive Network Defence</p>
+        </div>
+        <div style="text-align: right;">
+            <span class="status-badge-online">● SYSTEM ONLINE</span>
+            <div style="margin-top: 6px; color: #38BDF8; font-size: 12px; font-weight: 600;">Engine: {selected_model_name}</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # If Live Monitoring page, bypass offline pipeline completely
+    if page == "Live Network Monitoring":
+        # Check connection status
+        backend_online = False
+        try:
+            res = requests.get("http://localhost:8000/api/interfaces", timeout=5)
+            if res.status_code == 200:
+                backend_online = True
+        except Exception:
+            pass
+            
+        if not backend_online:
+            st.warning("⚠️ Telemetry Server is Offline. Attempting to start...")
+            start_cyclone_backend()
+            time.sleep(3)
+            st.rerun()
+            
+        # Embedded zero-rerun live monitoring client-side component (flows via WebSocket)
+        cyclone_html_code = """
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Cyclone Live SOC</title>
+    <!-- Include ApexCharts for smooth rolling area graphs -->
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    <style>
+        body {
+            background-color: #0B0E14;
+            color: #CBD5E1;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
+        }
+        
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: #151C28;
+            border: 1px solid #232D3F;
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+        }
+        
+        .control-label {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #64748B;
+        }
+        
+        select {
+            background: #0B0E14;
+            border: 1px solid #334155;
+            color: #E2E8F0;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-family: monospace;
+            cursor: pointer;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        
+        select:focus {
+            border-color: #38BDF8;
+        }
+        
+        .connection-status {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+            font-family: monospace;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        
+        .dot-online { background-color: #10B981; box-shadow: 0 0 8px #10B981; }
+        .dot-offline { background-color: #EF4444; box-shadow: 0 0 8px #EF4444; }
+        
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        
+        .kpi-card {
+            background: #151C28;
+            border-radius: 8px;
+            padding: 16px 18px;
+            border-left: 4px solid #38BDF8;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+            border-top: 1px solid #232D3F;
+            border-right: 1px solid #232D3F;
+            border-bottom: 1px solid #232D3F;
+        }
+        
+        .kpi-label {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #94A3B8;
+            margin-bottom: 4px;
+        }
+        
+        .kpi-value {
+            font-size: 22px;
+            font-weight: 700;
+            color: #F8FAFC;
+        }
+        
+        .kpi-subtext {
+            font-size: 12px;
+            color: #64748B;
+            margin-top: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .chart-container {
+            background: #151C28;
+            border: 1px solid #232D3F;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+        }
+        
+        .section-header {
+            font-size: 15px;
+            font-weight: 700;
+            color: #F8FAFC;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-bottom: 1px solid #1E293B;
+            padding-bottom: 8px;
+        }
+        
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid #232D3F;
+            margin-bottom: 16px;
+        }
+        
+        .tab-btn {
+            background: none;
+            border: none;
+            color: #94A3B8;
+            padding: 10px 16px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+            outline: none;
+        }
+        
+        .tab-btn.active {
+            color: #38BDF8;
+            border-bottom: 2px solid #38BDF8;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        /* Table & Lists styling */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            text-align: left;
+        }
+        
+        th {
+            padding: 10px 12px;
+            background: #1E293B;
+            color: #94A3B8;
+            font-weight: 600;
+            border-bottom: 1px solid #232D3F;
+        }
+        
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #1E293B;
+            color: #E2E8F0;
+            font-family: monospace;
+        }
+        
+        tr:hover td {
+            background: rgba(56, 189, 248, 0.04);
+        }
+        
+        .alert-item {
+            background: #192231;
+            border-radius: 6px;
+            padding: 12px 16px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-right: 1px solid #232D3F;
+            border-top: 1px solid #232D3F;
+            border-bottom: 1px solid #232D3F;
+            transition: transform 0.15s;
+        }
+        
+        .alert-item:hover {
+            transform: translateX(3px);
+        }
+        
+        .alert-main {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        
+        .alert-title {
+            font-weight: 700;
+            font-size: 13px;
+        }
+        
+        .alert-desc {
+            font-size: 11px;
+            color: #94A3B8;
+            font-family: monospace;
+        }
+        
+        .alert-time {
+            font-size: 11px;
+            color: #64748B;
+            font-family: monospace;
+        }
+        
+        .badge {
+            font-size: 9px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 700;
+            text-transform: uppercase;
+            font-family: monospace;
+            border: 1px solid transparent;
+        }
+        
+        .badge-critical {
+            background: rgba(239, 68, 68, 0.15);
+            color: #EF4444;
+            border-color: rgba(239, 68, 68, 0.3);
+        }
+        
+        .badge-high {
+            background: rgba(249, 115, 22, 0.15);
+            color: #F97316;
+            border-color: rgba(249, 115, 22, 0.3);
+        }
+        
+        .badge-medium {
+            background: rgba(234, 179, 8, 0.15);
+            color: #EAB308;
+            border-color: rgba(234, 179, 8, 0.3);
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #64748B;
+            font-size: 13px;
+            border: 1px dashed #232D3F;
+            border-radius: 8px;
+            background: #111722;
+        }
+        
+        /* Firewall Panel Styles */
+        .firewall-form {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            max-width: 480px;
+        }
+        
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        
+        input[type="text"] {
+            background: #0B0E14;
+            border: 1px solid #334155;
+            color: #E2E8F0;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-family: monospace;
+            outline: none;
+        }
+        
+        input[type="text"]:focus {
+            border-color: #38BDF8;
+        }
+        
+        .btn-row {
+            display: flex;
+            gap: 12px;
+            margin-top: 8px;
+        }
+        
+        button.action-btn {
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: background-color 0.15s;
+        }
+        
+        button.btn-primary {
+            background-color: #EF4444;
+            color: white;
+        }
+        
+        button.btn-primary:hover {
+            background-color: #DC2626;
+        }
+        
+        button.btn-secondary {
+            background-color: #38BDF8;
+            color: #0B0E14;
+        }
+        
+        button.btn-secondary:hover {
+            background-color: #0EA5E9;
+        }
+        
+        .firewall-log {
+            margin-top: 16px;
+            padding: 10px 14px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-family: monospace;
+            display: none;
+        }
+        
+        .firewall-log.success {
+            background: rgba(16, 185, 129, 0.1);
+            color: #10B981;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            display: block;
+        }
+        
+        .firewall-log.error {
+            background: rgba(239, 68, 68, 0.1);
+            color: #EF4444;
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="header-controls">
+        <span class="control-label">⚡ Real Interface:</span>
+        <select id="iface-select" onchange="switchInterface(this.value)">
+            <option>Loading interfaces...</option>
+        </select>
+        <div class="connection-status">
+            <span class="dot" id="status-dot" class="dot dot-offline"></span>
+            <span id="status-text">Disconnected</span>
+        </div>
+    </div>
+
+    <div class="grid-container">
+        <div class="kpi-card" id="card-status" style="border-left-color: #EF4444;">
+            <div class="kpi-label">Capture Status</div>
+            <div class="kpi-value" id="val-status">OFFLINE</div>
+            <div class="kpi-subtext" id="sub-status">Start server.py</div>
+        </div>
+        <div class="kpi-card" style="border-left-color: #38BDF8;">
+            <div class="kpi-label">Packets Captured</div>
+            <div class="kpi-value" id="val-packets">0</div>
+            <div class="kpi-subtext" id="sub-packets">Total session packets</div>
+        </div>
+        <div class="kpi-card" style="border-left-color: #10B981;">
+            <div class="kpi-label">Flows Captured</div>
+            <div class="kpi-value" id="val-flows">0</div>
+            <div class="kpi-subtext" id="sub-flows">Real-time aggregated</div>
+        </div>
+        <div class="kpi-card" id="card-alerts" style="border-left-color: #10B981;">
+            <div class="kpi-label">Active Alerts</div>
+            <div class="kpi-value" id="val-alerts" style="color: #10B981;">0</div>
+            <div class="kpi-subtext" id="sub-alerts">No malicious flows</div>
+        </div>
+    </div>
+
+    <div class="chart-container">
+        <div class="section-header">📈 Real Traffic Volume (live)</div>
+        <div id="chart"></div>
+    </div>
+
+    <div class="chart-container" style="min-height: 300px;">
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab(event, 'alerts')">⚠️ Security Alerts</button>
+            <button class="tab-btn" onclick="switchTab(event, 'flows')">📊 All Live Flows</button>
+            <button class="tab-btn" onclick="switchTab(event, 'firewall')">🚫 Firewall Host Blocking</button>
+        </div>
+
+        <div id="tab-alerts" class="tab-content active">
+            <div id="alerts-list">
+                <div class="empty-state">No security alerts detected — benign traffic is filtered.</div>
+            </div>
+        </div>
+
+        <div id="tab-flows" class="tab-content">
+            <div style="max-height: 400px; overflow-y: auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Protocol</th>
+                            <th>Source IP</th>
+                            <th>Dest IP</th>
+                            <th>Attack Type</th>
+                            <th>Severity</th>
+                            <th>Confidence</th>
+                        </tr>
+                    </thead>
+                    <tbody id="flows-list">
+                        <tr>
+                            <td colspan="7" class="empty-state" style="text-align: center; border: none;">No flows captured yet. Select an interface to begin streaming.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="tab-firewall" class="tab-content">
+            <div class="firewall-form">
+                <div class="input-group">
+                    <label class="control-label" style="margin-bottom: 2px;">IP Address to block:</label>
+                    <input type="text" id="block-ip" placeholder="e.g. 192.168.1.100" />
+                </div>
+                <div class="btn-row">
+                    <button class="action-btn btn-primary" onclick="firewallAction('block')">Block Host</button>
+                    <button class="action-btn btn-secondary" onclick="firewallAction('unblock')">Unblock Host</button>
+                </div>
+                <div id="firewall-status" class="firewall-log"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = "http://localhost:8000";
+        const WS_BASE = "ws://localhost:8000";
+        
+        let ws = null;
+        let flows = [];
+        let totalPackets = 0;
+        let connected = false;
+        let selectedIface = "";
+        
+        // ApexCharts configuration (smooth spline area chart)
+        const bucketSizeMs = 5000;
+        const numBuckets = 20;
+        let buckets = [];
+
+        function initBuckets() {
+            const now = Date.now();
+            buckets = [];
+            for (let i = numBuckets - 1; i >= 0; i--) {
+                const bucketEnd = now - i * bucketSizeMs;
+                const bucketStart = bucketEnd - bucketSizeMs;
+                const date = new Date(bucketEnd);
+                const timeStr = date.toTimeString().split(" ")[0];
+                buckets.push({
+                    start: bucketStart,
+                    end: bucketEnd,
+                    time: timeStr,
+                    actual: 0
+                });
+            }
+        }
+        initBuckets();
+
+        var options = {
+            series: [{
+                name: 'Flows',
+                data: buckets.map(b => b.actual)
+            }],
+            chart: {
+                type: 'area',
+                height: 240,
+                toolbar: { show: false },
+                animations: {
+                    enabled: true,
+                    easing: 'linear',
+                    dynamicAnimation: { speed: 850 }
+                },
+                background: 'transparent'
+            },
+            colors: ['#38BDF8'],
+            dataLabels: { enabled: false },
+            stroke: {
+                curve: 'smooth',
+                width: 2.5
+            },
+            fill: {
+                type: 'gradient',
+                gradient: {
+                    shadeIntensity: 1,
+                    opacityFrom: 0.35,
+                    opacityTo: 0.02,
+                    stops: [0, 95]
+                }
+            },
+            grid: {
+                borderColor: '#1E293B',
+                xaxis: { lines: { show: false } },
+                yaxis: { lines: { show: true } }
+            },
+            xaxis: {
+                categories: buckets.map(b => b.time),
+                labels: { style: { colors: '#64748B', fontFamily: 'monospace', fontSize: '10px' } },
+                axisBorder: { show: false },
+                axisTicks: { show: false }
+            },
+            yaxis: {
+                labels: { style: { colors: '#64748B', fontFamily: 'monospace', fontSize: '10px' } },
+                min: 0,
+                forceNiceScale: true
+            },
+            theme: { mode: 'dark' }
+        };
+
+        var chart = new ApexCharts(document.querySelector("#chart"), options);
+        chart.render();
+
+        // 1. Fetch available physical/active interfaces on load
+        async function loadInterfaces() {
+            try {
+                const res = await fetch(`${API_BASE}/api/interfaces`);
+                const data = await res.json();
+                const rawList = Array.isArray(data) ? data : (data.interfaces || []);
+                
+                const select = document.getElementById("iface-select");
+                select.innerHTML = "";
+                
+                // Helper to validate and clean up interface IPs
+                const isRealActiveIp = (ip) => {
+                    if (!ip || ip === "N/A" || ip === "0.0.0.0" || ip === "127.0.0.1") return false;
+                    if (ip.startsWith("169.254.")) return false;
+                    return true;
+                };
+
+                let bestIface = "";
+                
+                // Filter out non-physical or down interfaces
+                const validList = rawList.map(item => ({
+                    name: item.name || "Interface",
+                    ip: item.ip || "Active"
+                }));
+                
+                validList.forEach(item => {
+                    const option = document.createElement("option");
+                    option.value = item.name;
+                    option.innerText = `${item.name} — ${item.ip}`;
+                    select.appendChild(option);
+                    
+                    // Auto-detect best interface (Wi-Fi or Ethernet with active IP)
+                    if (!bestIface) {
+                        const nameLower = item.name.toLowerCase();
+                        if ((nameLower.includes("wi-fi") || nameLower.includes("wifi") || nameLower.includes("ethernet")) && isRealActiveIp(item.ip)) {
+                            bestIface = item.name;
+                        }
+                    }
+                });
+                
+                if (validList.length > 0) {
+                    const startIface = bestIface || validList[0].name;
+                    select.value = startIface;
+                    switchInterface(startIface);
+                }
+            } catch (err) {
+                console.error("Failed to load interfaces:", err);
+            }
+        }
+
+        // 2. Establish WebSocket Live Capture Connection
+        function connectWebSocket(iface) {
+            if (ws) {
+                ws.close();
+            }
+            
+            flows = [];
+            document.getElementById("flows-list").innerHTML = '<tr><td colspan="7" class="empty-state" style="text-align: center; border: none;">Waiting for network flows...</td></tr>';
+            document.getElementById("alerts-list").innerHTML = '<div class="empty-state">No security alerts detected — benign traffic is filtered.</div>';
+            
+            updateConnectionStatus(false);
+            
+            const wsUrl = `${WS_BASE}/ws/live?iface=${encodeURIComponent(iface)}`;
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                connected = true;
+                updateConnectionStatus(true);
+            };
+            
+            ws.onclose = () => {
+                connected = false;
+                updateConnectionStatus(false);
+            };
+            
+            ws.onerror = () => {
+                connected = false;
+                updateConnectionStatus(false);
+            };
+            
+            ws.onmessage = (event) => {
+                try {
+                    const flow = JSON.parse(event.data);
+                    flow.receivedAt = Date.now();
+                    flows.unshift(flow);
+                    if (flows.length > 300) {
+                        flows.pop();
+                    }
+                    renderFlows();
+                } catch (e) {
+                    console.error("Error parsing websocket packet:", e);
+                }
+            };
+        }
+
+        function switchInterface(iface) {
+            selectedIface = iface;
+            connectWebSocket(iface);
+        }
+
+        function updateConnectionStatus(isOnline) {
+            const dot = document.getElementById("status-dot");
+            const text = document.getElementById("status-text");
+            const valStatus = document.getElementById("val-status");
+            const subStatus = document.getElementById("sub-status");
+            const cardStatus = document.getElementById("card-status");
+            
+            if (isOnline) {
+                dot.className = "dot dot-online";
+                text.innerText = "Connected — Real Capture Live";
+                valStatus.innerText = "● LIVE";
+                valStatus.style.color = "#10B981";
+                cardStatus.style.borderLeftColor = "#10B981";
+                subStatus.innerText = selectedIface.substring(0, 30);
+            } else {
+                dot.className = "dot dot-offline";
+                text.innerText = "Disconnected — Reconnecting...";
+                valStatus.innerText = "OFFLINE";
+                valStatus.style.color = "#EF4444";
+                cardStatus.style.borderLeftColor = "#EF4444";
+                subStatus.innerText = "Start server.py";
+            }
+        }
+
+        // 3. Render flow tables and calculate rolling buckets
+        function renderFlows() {
+            // Update Flow Count
+            document.getElementById("val-flows").innerText = flows.length;
+            
+            // Filter Alerts
+            const alerts = flows.filter(f => f.severity && f.severity !== "none");
+            const valAlerts = document.getElementById("val-alerts");
+            valAlerts.innerText = alerts.length;
+            
+            const cardAlerts = document.getElementById("card-alerts");
+            if (alerts.length > 0) {
+                valAlerts.style.color = "#EF4444";
+                cardAlerts.style.borderLeftColor = "#EF4444";
+                
+                const c = alerts.filter(a => a.severity === "critical").length;
+                const h = alerts.filter(a => a.severity === "high").length;
+                const m = alerts.filter(a => a.severity === "medium").length;
+                document.getElementById("sub-alerts").innerText = `${c} Critical · ${h} High · ${m} Med`;
+            } else {
+                valAlerts.style.color = "#10B981";
+                cardAlerts.style.borderLeftColor = "#10B981";
+                document.getElementById("sub-alerts").innerText = "No malicious flows";
+            }
+            
+            // Render Alerts Tab
+            const alertsList = document.getElementById("alerts-list");
+            if (alerts.length > 0) {
+                alertsList.innerHTML = alerts.slice(0, 50).map(f => {
+                    const badgeClass = `badge badge-${f.severity}`;
+                    return `
+                        <div class="alert-item" style="border-left: 5px solid ${f.severity === 'critical' ? '#EF4444' : '#F97316'};">
+                            <div class="alert-main">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span style="font-weight: bold; color: ${f.severity === 'critical' ? '#EF4444' : '#F97316'};">${f.attack_type}</span>
+                                    <span class="${badgeClass}">${f.severity}</span>
+                                </div>
+                                <span class="alert-desc">${f.src_ip} ➔ ${f.dst_ip} (${f.protocol})</span>
+                            </div>
+                            <div class="alert-time">${f.timestamp}</div>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                alertsList.innerHTML = '<div class="empty-state">No security alerts detected — benign traffic is filtered.</div>';
+            }
+            
+            // Render Live Flows Tab
+            const flowsListBody = document.getElementById("flows-list");
+            if (flows.length > 0) {
+                flowsListBody.innerHTML = flows.slice(0, 100).map(f => {
+                    const sevColor = f.severity === 'critical' ? '#EF4444' : f.severity === 'high' ? '#F97316' : f.severity === 'medium' ? '#EAB308' : '#10B981';
+                    return `
+                        <tr>
+                            <td>${f.timestamp}</td>
+                            <td>${f.protocol}</td>
+                            <td>${f.src_ip}</td>
+                            <td>${f.dst_ip}</td>
+                            <td>${f.attack_type}</td>
+                            <td style="color: ${sevColor}; font-weight: bold;">${f.severity.toUpperCase()}</td>
+                            <td>${(f.confidence * 100).toFixed(0)}%</td>
+                        </tr>
+                    `;
+                }).join('');
+            } else {
+                flowsListBody.innerHTML = '<tr><td colspan="7" class="empty-state" style="text-align: center; border: none;">No flows captured yet. Select an interface to begin streaming.</td></tr>';
+            }
+        }
+
+        // 4. Update rolling chart timeline
+        function updateChart() {
+            const now = Date.now();
+            
+            // Slide timeline buckets
+            buckets.forEach(b => { b.actual = 0; });
+            
+            // Distribute flows to buckets
+            flows.forEach(flow => {
+                if (!flow.receivedAt) return;
+                for (const bucket of buckets) {
+                    if (flow.receivedAt >= bucket.start && flow.receivedAt < bucket.end) {
+                        bucket.actual++;
+                        break;
+                    }
+                }
+            });
+            
+            // Check if we need to shift timeline
+            const latestBucketEnd = buckets[buckets.length - 1].end;
+            if (now > latestBucketEnd + bucketSizeMs) {
+                // Remove oldest, add new bucket
+                buckets.shift();
+                const newEnd = latestBucketEnd + bucketSizeMs;
+                const newStart = latestBucketEnd;
+                const date = new Date(newEnd);
+                const timeStr = date.toTimeString().split(" ")[0];
+                buckets.push({
+                    start: newStart,
+                    end: newEnd,
+                    time: timeStr,
+                    actual: 0
+                });
+            }
+            
+            // Update chart elements
+            chart.updateSeries([{
+                data: buckets.map(b => b.actual)
+            }]);
+            chart.updateOptions({
+                xaxis: {
+                    categories: buckets.map(b => b.time)
+                }
+            });
+        }
+
+        // 5. Query /api/stats for session totals
+        async function fetchStats() {
+            try {
+                const res = await fetch(`${API_BASE}/api/stats`);
+                const data = await res.json();
+                if (data && typeof data.total_packets === "number") {
+                    document.getElementById("val-packets").innerText = data.total_packets.toLocaleString();
+                }
+            } catch (e) {}
+        }
+
+        // 6. Firewall Blocking API Calls
+        async function firewallAction(action) {
+            const ip = document.getElementById("block-ip").value.trim();
+            const logBox = document.getElementById("firewall-status");
+            
+            if (!ip) {
+                logBox.className = "firewall-log error";
+                logBox.innerText = "Please enter a valid IP address.";
+                return;
+            }
+            
+            logBox.className = "firewall-log";
+            logBox.innerText = "Processing firewall rule...";
+            logBox.style.display = "block";
+            
+            try {
+                const res = await fetch(`${API_BASE}/api/${action}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ip: ip })
+                });
+                const data = await res.json();
+                
+                if (data.status === "blocked" || data.status === "unblocked") {
+                    logBox.className = "firewall-log success";
+                    logBox.innerText = `Success: IP ${ip} has been ${data.status === 'blocked' ? 'BLOCKED' : 'UNBLOCKED'} on Windows Firewall.`;
+                } else {
+                    logBox.className = "firewall-log error";
+                    logBox.innerText = `Error: ${data.detail || 'Could not complete firewall rule change.'}`;
+                }
+            } catch (err) {
+                logBox.className = "firewall-log error";
+                logBox.innerText = `Error: ${err.message || 'Connection failed.'}`;
+            }
+        }
+
+        function switchTab(evt, tabId) {
+            const tabContents = document.getElementsByClassName("tab-content");
+            for (let i = 0; i < tabContents.length; i++) {
+                tabContents[i].classList.remove("active");
+            }
+            
+            const tabBtns = document.getElementsByClassName("tab-btn");
+            for (let i = 0; i < tabBtns.length; i++) {
+                tabBtns[i].classList.remove("active");
+            }
+            
+            document.getElementById("tab-" + tabId).classList.add("active");
+            evt.currentTarget.classList.add("active");
+        }
+
+        // Run intervals
+        loadInterfaces();
+        setInterval(updateChart, 1500);
+        setInterval(fetchStats, 2000);
+    </script>
+</body>
+</html>
+        """
+        st.components.v1.html(cyclone_html_code, height=950, scrolling=True)
+        return
+
+
+
+    # Data ingestion loading logic for the selected data source (run only on forecasting pages)
     df = None
     upload_status_msg = ""
     if data_source == "Demo Dataset (CSV)":
@@ -270,6 +1265,40 @@ def main():
             st.sidebar.markdown(f'<div class="file-status-box" style="border-left: 3px solid #22C55E;">{upload_status_msg}</div>', unsafe_allow_html=True)
         else:
             st.sidebar.info("Please upload a PCAP packet capture file.")
+
+    elif data_source == "Live Telemetry":
+        backend_online = False
+        try:
+            res = requests.get("http://localhost:8000/api/status", timeout=1)
+            if res.status_code == 200:
+                backend_online = True
+        except Exception:
+            pass
+
+        if not backend_online:
+            st.sidebar.warning("⚠️ Telemetry Server is Offline. Starting...")
+            start_cyclone_backend()
+            st.rerun()
+        else:
+            # Ensure capture is running. If not, auto-start on the first active 'up' interface.
+            status_res = requests.get("http://localhost:8000/api/live/status").json()
+            if not status_res.get("running", False):
+                ifaces_data = requests.get("http://localhost:8000/api/interfaces").json()
+                ifaces = ifaces_data.get("interfaces", [])
+                if ifaces:
+                    up_ifaces = [i for i in ifaces if i.get("status") == "up" and not i.get("name", "").startswith("wsl:")]
+                    active_if = up_ifaces[0]["name"] if up_ifaces else ifaces[0]["name"]
+                    requests.post("http://localhost:8000/api/live/start", json={"interface": active_if})
+                    st.rerun()
+
+            flows_data = requests.get("http://localhost:8000/api/live/flows").json()
+            flows_list = flows_data.get("flows", [])
+            if len(flows_list) > 0:
+                df = flows_to_dataframe(flows_list)
+                upload_status_msg = f"✓ Live telemetry active<br>✓ {len(df):,} active flows loaded<br>✓ Ready for inference"
+                st.sidebar.markdown(f'<div class="file-status-box" style="border-left: 3px solid #22C55E;">{upload_status_msg}</div>', unsafe_allow_html=True)
+            else:
+                st.sidebar.warning("Waiting for live network packets... Generate some traffic.")
 
     if df is None or df.empty:
         st.error("No dataset loaded. Please select a valid data source or upload telemetry data.")
@@ -320,40 +1349,6 @@ def main():
     # Lightweight Drift Detection
     drift_detector = DistributionDriftDetector(X[:int(len(X)*0.7)])
     drift_info = drift_detector.detect_drift(current_seq_orig)
-
-    st.sidebar.markdown("---")
-
-    # 4. NAVIGATION SECTION
-    st.sidebar.markdown('<div class="sidebar-section-header">🧭 NAVIGATION</div>', unsafe_allow_html=True)
-    page = st.sidebar.radio(
-        "Navigation Menu",
-        [
-            "1. Overview",
-            "2. Attack Forecast",
-            "3. Attack Progression",
-            "4. Network Graph Topology",
-            "5. Explainability",
-            "6. Traffic Explorer",
-            "7. Model Performance"
-        ],
-        label_visibility="collapsed"
-    )
-
-    # ----------------------------------------------------
-    # SOC TOP HEADER BAR
-    # ----------------------------------------------------
-    st.markdown(f"""
-    <div style="background: linear-gradient(90deg, #111722 0%, #1A2332 100%); padding: 18px 24px; border-radius: 10px; border-left: 5px solid #38BDF8; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
-        <div>
-            <h1 style="margin: 0; color: #FFFFFF; font-size: 24px; font-weight: 700; letter-spacing: 0.5px;">CyberForecaster SOC</h1>
-            <p style="margin: 4px 0 0 0; color: #94A3B8; font-size: 13px;">AI-Based Predictive Network Defence</p>
-        </div>
-        <div style="text-align: right;">
-            <span class="status-badge-online">● SYSTEM ONLINE</span>
-            <div style="margin-top: 6px; color: #38BDF8; font-size: 12px; font-weight: 600;">Engine: {selected_model_name}</div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
 
     # Distribution Drift Warning Banner
     if drift_info['drift_warning']:
