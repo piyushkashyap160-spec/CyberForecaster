@@ -1,4 +1,5 @@
 import os
+import io
 import sys
 import pytest
 import pandas as pd
@@ -20,6 +21,29 @@ def test_csv_loader():
     assert "Src_IP" in df.columns
     assert "Dst_IP" in df.columns
     assert "Dst_Port" in df.columns
+
+def test_csv_loader_uploaded_file_buffer():
+    """
+    Regression test: Verifies load_flow_csv handles file-like buffers
+    such as Streamlit's UploadedFile (io.BytesIO / io.StringIO) without TypeError.
+    """
+    csv_content = (
+        "Timestamp,Src_IP,Dst_IP,Src_Port,Dst_Port,Protocol,Tot_Pkts,Tot_Bytes,SYN_Cnt,ACK_Cnt,Label\n"
+        "2026-08-25 10:00:00,192.168.1.10,10.0.0.1,1024,80,6,10,1000,1,9,Benign\n"
+        "2026-08-25 10:00:05,192.168.1.20,10.0.0.1,2048,443,6,5,500,1,4,Benign\n"
+    )
+    
+    # 1. Test StringIO buffer
+    string_buffer = io.StringIO(csv_content)
+    df_str = load_flow_csv(string_buffer)
+    assert len(df_str) == 2
+    assert "Src_IP" in df_str.columns
+
+    # 2. Test BytesIO buffer (matches Streamlit UploadedFile)
+    bytes_buffer = io.BytesIO(csv_content.encode('utf-8'))
+    df_bytes = load_flow_csv(bytes_buffer)
+    assert len(df_bytes) == 2
+    assert "Dst_IP" in df_bytes.columns
 
 def test_window_builder():
     demo_path = "data/demo/demo_cicids2018.csv"

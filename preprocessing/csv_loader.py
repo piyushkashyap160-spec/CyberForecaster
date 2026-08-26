@@ -1,4 +1,5 @@
 import os
+import io
 import pandas as pd
 import numpy as np
 
@@ -67,18 +68,24 @@ COLUMN_MAPPINGS = {
     'Stage': 'Stage'
 }
 
-def load_flow_csv(file_path: str) -> pd.DataFrame:
+def load_flow_csv(file_input) -> pd.DataFrame:
     """
     Loads flow-level dataset CSV and normalizes column headers across CIC-IDS datasets.
+    Accepts:
+      - Filepath string or os.PathLike
+      - File-like buffer objects (Streamlit UploadedFile, io.BytesIO, io.StringIO)
     """
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"Dataset CSV not found at path: {file_path}")
-
-    # Read CSV
-    df = pd.read_csv(file_path)
+    if isinstance(file_input, (str, os.PathLike)):
+        if not os.path.exists(file_input):
+            raise FileNotFoundError(f"Dataset CSV not found at path: {file_input}")
+        df = pd.read_csv(file_input)
+    elif hasattr(file_input, 'read') or isinstance(file_input, (io.BytesIO, io.StringIO, io.IOBase)):
+        df = pd.read_csv(file_input)
+    else:
+        raise TypeError(f"Expected file path string or file-like buffer, got {type(file_input)}")
 
     # Clean whitespace in column names
-    df.columns = [c.strip() for c in df.columns]
+    df.columns = [str(c).strip() for c in df.columns]
 
     # Rename mapped columns
     rename_dict = {}

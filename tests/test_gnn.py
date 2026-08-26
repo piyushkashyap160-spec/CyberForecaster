@@ -270,3 +270,58 @@ def test_gnn_rollout_uses_model_graph_encoder():
     assert len(results) == 3
     assert results[0]['horizon_step'] == 't+1'
     assert 'attack_probability' in results[0]
+
+
+# ---------------------------------------------------------------------------
+# 8. Checkpoint Compatibility Regression Tests
+# ---------------------------------------------------------------------------
+
+def test_saved_gnn_checkpoint_strict_load():
+    """
+    Regression test: Loads actual saved checkpoint models_weights/temporal_gnn_world_model.pt
+    with strict=True using the canonical TemporalGNNWorldModel class used by Streamlit dashboard.
+    Fails if checkpoint architecture and model architecture diverge.
+    """
+    ckpt_path = "models_weights/temporal_gnn_world_model.pt"
+    assert os.path.exists(ckpt_path), f"Checkpoint not found at {ckpt_path}"
+
+    model = TemporalGNNWorldModel(
+        node_dim=10,
+        graph_embed_dim=64,
+        state_dim=23,
+        hidden_size=128,
+        num_layers=2,
+        dropout=0.2,
+        num_stages=6
+    )
+    state_dict = torch.load(ckpt_path, map_location='cpu')
+    model.load_state_dict(state_dict, strict=True)
+    assert model.training is True or model.training is False
+
+
+def test_saved_gnn_checkpoint_strict_load_without_pyg():
+    """
+    Regression test: Verifies strict checkpoint loading succeeds even if HAS_PYG=False.
+    Guarantees environment-invariant parameter schema compatibility.
+    """
+    ckpt_path = "models_weights/temporal_gnn_world_model.pt"
+    assert os.path.exists(ckpt_path), f"Checkpoint not found at {ckpt_path}"
+
+    import models.graph_encoder
+    orig_has_pyg = models.graph_encoder.HAS_PYG
+    try:
+        models.graph_encoder.HAS_PYG = False
+        model = TemporalGNNWorldModel(
+            node_dim=10,
+            graph_embed_dim=64,
+            state_dim=23,
+            hidden_size=128,
+            num_layers=2,
+            dropout=0.2,
+            num_stages=6
+        )
+        state_dict = torch.load(ckpt_path, map_location='cpu')
+        model.load_state_dict(state_dict, strict=True)
+    finally:
+        models.graph_encoder.HAS_PYG = orig_has_pyg
+

@@ -41,21 +41,111 @@ st.set_page_config(
 # Custom CSS for dark cybersecurity SOC UI theme
 st.markdown("""
 <style>
-    .main {
-        background-color: #0E1117;
-        color: #E0E6ED;
+    /* Dark SOC Theme Variables & Base */
+    .stApp {
+        background-color: #0B0E14;
+        color: #E2E8F0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
-    .metric-card {
-        background-color: #1E222D;
+    .main .block-container {
+        padding-top: 1.5rem;
+        padding-bottom: 2rem;
+        max-width: 1400px;
+    }
+
+    /* Cards & Containers */
+    .soc-card {
+        background: #151C28;
+        border: 1px solid #232D3F;
         border-radius: 8px;
-        padding: 16px;
-        border-left: 4px solid #00D2FF;
-        margin-bottom: 12px;
+        padding: 18px 20px;
+        margin-bottom: 16px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
     }
-    .status-normal { border-left: 4px solid #00E676 !important; }
-    .status-warning { border-left: 4px solid #FFEA00 !important; }
-    .status-critical { border-left: 4px solid #FF1744 !important; }
-    .stAlert { background-color: #1E222D; }
+    
+    .kpi-card {
+        background: #151C28;
+        border-radius: 8px;
+        padding: 16px 18px;
+        border-left: 4px solid #38BDF8;
+        margin-bottom: 12px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    }
+    
+    .threat-normal { border-left: 5px solid #22C55E !important; }
+    .threat-elevated { border-left: 5px solid #EAB308 !important; }
+    .threat-warning { border-left: 5px solid #F97316 !important; }
+    .threat-critical { border-left: 5px solid #EF4444 !important; }
+
+    .kpi-label {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: #94A3B8;
+        margin-bottom: 4px;
+    }
+    .kpi-value {
+        font-size: 22px;
+        font-weight: 700;
+        color: #F8FAFC;
+    }
+    .kpi-subtext {
+        font-size: 12px;
+        color: #64748B;
+        margin-top: 4px;
+    }
+
+    /* Sidebar Customization */
+    section[data-testid="stSidebar"] {
+        background-color: #0F141C !important;
+        border-right: 1px solid #1E293B;
+    }
+    
+    .sidebar-section-header {
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 1.2px;
+        color: #38BDF8;
+        text-transform: uppercase;
+        margin-top: 16px;
+        margin-bottom: 8px;
+    }
+
+    /* Custom Badges */
+    .status-badge-online {
+        background-color: #052E16;
+        color: #4ADE80;
+        border: 1px solid #166534;
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+    }
+
+    .file-status-box {
+        background: #1E293B;
+        border: 1px solid #334155;
+        border-radius: 6px;
+        padding: 10px 12px;
+        font-size: 12px;
+        color: #CBD5E1;
+        margin-top: 8px;
+    }
+
+    /* Custom Horizontal Rules */
+    hr {
+        border-color: #1E293B !important;
+        margin: 16px 0 !important;
+    }
+
+    /* Table & Plot Overrides */
+    div[data-testid="stTable"] table {
+        background-color: #151C28;
+        color: #E2E8F0;
+        border-radius: 6px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -114,23 +204,41 @@ def load_all_models(config):
 def main():
     config = load_config()
 
-    st.sidebar.title("🛡️ CyberForecaster SOC")
+    # Sidebar Header Branding
+    st.sidebar.title("🛡️ CyberForecaster")
     st.sidebar.caption("AI-Based Network Attack Forecasting System")
     st.sidebar.markdown("---")
 
-    # Active Model Selector
-    st.sidebar.subheader("🤖 Active World Model Engine")
+    # 1. INFERENCE ENGINE SECTION
+    st.sidebar.markdown('<div class="sidebar-section-header">🤖 INFERENCE ENGINE</div>', unsafe_allow_html=True)
     selected_model_name = st.sidebar.radio(
-        "Choose Inference Model",
-        ["Baseline LSTM World Model", "Advanced Temporal GNN + LSTM"]
+        "Select Active Engine",
+        ["Baseline LSTM World Model", "Advanced Temporal GNN + LSTM"],
+        index=1,
+        label_visibility="collapsed"
     )
 
+    # Compact Model Status Display
+    st.sidebar.markdown(f"""
+    <div class="file-status-box" style="border-left: 3px solid #38BDF8;">
+        <div><b>MODEL STATUS:</b> <span style="color:#4ADE80;">● Loaded</span></div>
+        <div><b>MODEL TYPE:</b> {selected_model_name}</div>
+        <div><b>MODE:</b> Forward Simulation</div>
+    </div>
+    """, unsafe_allow_html=True)
+
     st.sidebar.markdown("---")
-    # Data Input Source Selector
-    st.sidebar.subheader("📡 Data Ingestion")
-    data_source = st.sidebar.radio("Select Input Mode", ["Demo Dataset (CSV)", "Upload CSV", "Upload PCAP"])
+
+    # 2. DATA INGESTION SECTION
+    st.sidebar.markdown('<div class="sidebar-section-header">📡 DATA INGESTION</div>', unsafe_allow_html=True)
+    data_source = st.sidebar.radio(
+        "Select Input Mode",
+        ["Demo Dataset (CSV)", "Upload CSV", "Upload PCAP"],
+        label_visibility="collapsed"
+    )
 
     df = None
+    upload_status_msg = ""
     if data_source == "Demo Dataset (CSV)":
         demo_path = config['data']['demo_csv_path']
         if not os.path.exists(demo_path):
@@ -138,30 +246,42 @@ def main():
             from data.demo_generator import generate_demo_dataset
             generate_demo_dataset(demo_path)
         df = load_flow_csv(demo_path)
-        st.sidebar.success(f"Loaded Demo Dataset ({len(df)} flows)")
+        upload_status_msg = f"✓ Demo CSV loaded<br>✓ {len(df):,} flows parsed<br>✓ Ready for inference"
+        st.sidebar.markdown(f'<div class="file-status-box">{upload_status_msg}</div>', unsafe_allow_html=True)
+
     elif data_source == "Upload CSV":
-        uploaded_file = st.sidebar.file_uploader("Upload Flow CSV", type=["csv"])
+        uploaded_file = st.sidebar.file_uploader("Upload Flow CSV File", type=["csv"])
         if uploaded_file is not None:
             df = load_flow_csv(uploaded_file)
-            st.sidebar.success(f"Loaded Uploaded CSV ({len(df)} flows)")
+            upload_status_msg = f"✓ CSV loaded<br>✓ {len(df):,} flows parsed<br>✓ Ready for inference"
+            st.sidebar.markdown(f'<div class="file-status-box" style="border-left: 3px solid #22C55E;">{upload_status_msg}</div>', unsafe_allow_html=True)
+        else:
+            st.sidebar.info("Please upload a flow CSV file.")
+
     elif data_source == "Upload PCAP":
-        uploaded_pcap = st.sidebar.file_uploader("Upload PCAP File", type=["pcap", "pcapng"])
+        uploaded_pcap = st.sidebar.file_uploader("Upload PCAP / PCAPNG File", type=["pcap", "pcapng"])
         if uploaded_pcap is not None:
             temp_pcap_path = "data/demo/uploaded_temp.pcap"
             os.makedirs("data/demo", exist_ok=True)
             with open(temp_pcap_path, "wb") as f:
                 f.write(uploaded_pcap.read())
             df = parse_pcap_file(temp_pcap_path)
-            st.sidebar.success(f"Parsed PCAP File ({len(df)} flows)")
+            upload_status_msg = f"✓ PCAP parsed<br>✓ {len(df):,} flows extracted<br>✓ Ready for inference"
+            st.sidebar.markdown(f'<div class="file-status-box" style="border-left: 3px solid #22C55E;">{upload_status_msg}</div>', unsafe_allow_html=True)
+        else:
+            st.sidebar.info("Please upload a PCAP packet capture file.")
 
     if df is None or df.empty:
-        st.error("No data loaded. Please select or upload a valid dataset.")
+        st.error("No dataset loaded. Please select a valid data source or upload telemetry data.")
         return
 
-    # Load Models and Scaler
+    # Load Models and Scalers
     lstm_model, gnn_model, node_scaler, scaler, device = load_all_models(config)
 
-    # Process Time Windows
+    st.sidebar.markdown("---")
+
+    # 3. TIME CONTROLS SECTION
+    st.sidebar.markdown('<div class="sidebar-section-header">⏱️ TIME CONTROLS</div>', unsafe_allow_html=True)
     window_sec = st.sidebar.slider("Time Window (seconds)", 2, 15, config['data']['window_seconds'])
     seq_len = config['sequence']['sequence_length']
 
@@ -172,18 +292,15 @@ def main():
 
     X, y_state, y_attack, y_stage, timestamps = create_sequences(states, sequence_length=seq_len)
     
-    # Sidebar Timeline Slider
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("⏱️ SOC Time Slider")
-    selected_idx = st.sidebar.slider("Current Window Index t", 0, len(X) - 1, len(X) - 1)
+    selected_idx = st.sidebar.slider("SOC Window Index t", 0, len(X) - 1, len(X) - 1)
 
     current_seq_orig = X[selected_idx]
     current_timestamp = timestamps[selected_idx]
     current_df_windows = [states[j].get('df_window', pd.DataFrame()) for j in range(selected_idx, selected_idx + seq_len)]
 
-    # Perform Model Rollout based on Selected Model
     k_horizon = st.sidebar.slider("Forecast Horizon K", 1, 10, config['sequence']['forecast_horizon'])
 
+    # Perform Model Rollout based on Selected Model
     if selected_model_name == "Baseline LSTM World Model":
         rollout_results = perform_k_step_rollout(lstm_model, scaler, current_seq_orig, k_steps=k_horizon, device=device)
         active_model_obj = lstm_model
@@ -204,7 +321,10 @@ def main():
     drift_detector = DistributionDriftDetector(X[:int(len(X)*0.7)])
     drift_info = drift_detector.detect_drift(current_seq_orig)
 
-    # Navigation Menu
+    st.sidebar.markdown("---")
+
+    # 4. NAVIGATION SECTION
+    st.sidebar.markdown('<div class="sidebar-section-header">🧭 NAVIGATION</div>', unsafe_allow_html=True)
     page = st.sidebar.radio(
         "Navigation Menu",
         [
@@ -215,31 +335,93 @@ def main():
             "5. Explainability",
             "6. Traffic Explorer",
             "7. Model Performance"
-        ]
+        ],
+        label_visibility="collapsed"
     )
 
-    st.title("🛡️ CyberForecaster SOC Dashboard")
-    st.caption(f"Active Model: **{selected_model_name}** | Paradigm: P(S[t+1] | S[t]) -> Attack Forecasting")
-    st.markdown("---")
+    # ----------------------------------------------------
+    # SOC TOP HEADER BAR
+    # ----------------------------------------------------
+    st.markdown(f"""
+    <div style="background: linear-gradient(90deg, #111722 0%, #1A2332 100%); padding: 18px 24px; border-radius: 10px; border-left: 5px solid #38BDF8; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+        <div>
+            <h1 style="margin: 0; color: #FFFFFF; font-size: 24px; font-weight: 700; letter-spacing: 0.5px;">CyberForecaster SOC</h1>
+            <p style="margin: 4px 0 0 0; color: #94A3B8; font-size: 13px;">AI-Based Predictive Network Defence</p>
+        </div>
+        <div style="text-align: right;">
+            <span class="status-badge-online">● SYSTEM ONLINE</span>
+            <div style="margin-top: 6px; color: #38BDF8; font-size: 12px; font-weight: 600;">Engine: {selected_model_name}</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    # Distribution Drift Banner
+    # Distribution Drift Warning Banner
     if drift_info['drift_warning']:
-        st.warning(drift_info['warning_message'])
+        st.markdown(f"""
+        <div style="background-color: #2D1A00; border-left: 4px solid #F97316; padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; color: #FDBA74; font-size: 13px;">
+            ⚠️ <b>DISTRIBUTION DRIFT DETECTED:</b> {drift_info['warning_message']}
+        </div>
+        """, unsafe_allow_html=True)
 
+    # ----------------------------------------------------
     # PAGE 1: OVERVIEW
+    # ----------------------------------------------------
     if page == "1. Overview":
         st.subheader("🌐 Network Threat Overview")
-        st.caption("ℹ️ Data Mode: Synthetic demonstration dataset — not a substitute for real-world evaluation.")
 
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Current Timestamp S(t)", str(current_timestamp).split('.')[0])
-        with col2:
-            st.metric("Threat Level", risk_info['threat_level'], delta=f"{risk_info['current_risk_score']*100:.1f}% Risk")
-        with col3:
-            st.metric("Predicted Peak Stage", risk_info['predicted_peak_stage'])
-        with col4:
-            st.metric("Active Model Engine", selected_model_name)
+        # Determine Threat Card Style Class
+        tl_str = risk_info['threat_level']
+        if tl_str == "CRITICAL":
+            threat_class = "threat-critical"
+            threat_color = "#EF4444"
+        elif tl_str == "HIGH WARNING":
+            threat_class = "threat-warning"
+            threat_color = "#F97316"
+        elif tl_str == "ELEVATED":
+            threat_class = "threat-elevated"
+            threat_color = "#EAB308"
+        else:
+            threat_class = "threat-normal"
+            threat_color = "#22C55E"
+
+        # TOP THREAT OVERVIEW KPI CARDS
+        kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
+        
+        with kpi_col1:
+            st.markdown(f"""
+            <div class="kpi-card {threat_class}">
+                <div class="kpi-label">THREAT LEVEL</div>
+                <div class="kpi-value" style="color: {threat_color};">{tl_str}</div>
+                <div class="kpi-subtext">Current window index t</div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+        with kpi_col2:
+            st.markdown(f"""
+            <div class="kpi-card">
+                <div class="kpi-label">ATTACK PROBABILITY</div>
+                <div class="kpi-value">{risk_info['max_future_risk']*100:.1f}%</div>
+                <div class="kpi-subtext">Max rollout step risk</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with kpi_col3:
+            st.markdown(f"""
+            <div class="kpi-card">
+                <div class="kpi-label">PREDICTED PEAK STAGE</div>
+                <div class="kpi-value" style="color: #38BDF8;">{risk_info['predicted_peak_stage']}</div>
+                <div class="kpi-subtext">ATT&CK Stage Head</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with kpi_col4:
+            st.markdown(f"""
+            <div class="kpi-card">
+                <div class="kpi-label">ACTIVE MODEL</div>
+                <div class="kpi-value" style="font-size: 16px; margin-top: 4px;">{selected_model_name}</div>
+                <div class="kpi-subtext">Neural Transition Engine</div>
+            </div>
+            """, unsafe_allow_html=True)
 
         if risk_info['alert_triggered']:
             st.error(f"⚠️ **SOC ALERT TRIGGERED:** Future attack probability ({risk_info['max_future_risk']*100:.1f}%) exceeds warning threshold ({config['forecasting']['warning_threshold']*100:.0f}%). Forecasted Peak Stage: **{risk_info['predicted_peak_stage']}**")
@@ -247,24 +429,54 @@ def main():
         st.markdown("---")
         st.subheader("📈 Multi-Step Forward Horizon Preview")
         
+        # Interactive Probability Rollout Bar/Scatter Chart
+        horizon_steps = [r['horizon_step'] for r in rollout_results]
+        horizon_probs = [r['attack_probability'] * 100 for r in rollout_results]
+        horizon_stages = [STAGE_DESCRIPTIONS[r['predicted_stage_id']]['name'] for r in rollout_results]
+
+        fig_hor = go.Figure()
+        fig_hor.add_trace(go.Bar(
+            x=horizon_steps,
+            y=horizon_probs,
+            text=[f"{p:.1f}%<br>({s})" for p, s in zip(horizon_probs, horizon_stages)],
+            textposition='auto',
+            marker_color=['#EF4444' if p >= 85 else ('#F97316' if p >= 70 else '#38BDF8') for p in horizon_probs],
+            name="Attack Risk (%)"
+        ))
+
+        fig_hor.add_hline(y=config['forecasting']['warning_threshold']*100, line_dash="dot", line_color="#F97316", annotation_text="Warning (70%)")
+        fig_hor.add_hline(y=config['forecasting']['critical_threshold']*100, line_dash="dot", line_color="#EF4444", annotation_text="Critical (85%)")
+
+        fig_hor.update_layout(
+            title=f"Forecast Horizon Risk Rollout S(t+1)...S(t+{k_horizon})",
+            xaxis_title="Forward Time Step",
+            yaxis_title="Predicted Attack Probability (%)",
+            yaxis=dict(range=[0, 105]),
+            template="plotly_dark",
+            height=340,
+            margin=dict(l=40, r=40, t=50, b=40)
+        )
+        st.plotly_chart(fig_hor, use_container_width=True)
+
         horizon_df = pd.DataFrame([
             {
                 "Horizon Step": r['horizon_step'],
-                "Attack Probability (%)": r['attack_probability'] * 100,
+                "Attack Probability (%)": f"{r['attack_probability'] * 100:.2f}%",
                 "Predicted Stage": STAGE_DESCRIPTIONS[r['predicted_stage_id']]['name'],
-                "SYN Ratio": r['state_dict']['syn_ratio'],
-                "Port Entropy": r['state_dict']['port_entropy'],
-                "Total Bytes": r['state_dict']['total_bytes']
+                "SYN Ratio": f"{r['state_dict']['syn_ratio']:.4f}",
+                "Port Entropy": f"{r['state_dict']['port_entropy']:.4f}",
+                "Total Bytes": f"{r['state_dict']['total_bytes']:,.0f}"
             } for r in rollout_results
         ])
         
-        st.table(horizon_df)
+        st.dataframe(horizon_df, use_container_width=True)
 
+    # ----------------------------------------------------
     # PAGE 2: ATTACK FORECAST
+    # ----------------------------------------------------
     elif page == "2. Attack Forecast":
         st.subheader("🔮 Multi-Step Forward Attack Forecast")
 
-        # Full Timeline Inference for Charting
         scaled_all_X = scaler.transform(X)
         X_tensor_all = torch.tensor(scaled_all_X, dtype=torch.float32).to(device)
 
@@ -282,7 +494,7 @@ def main():
             y=all_probs[:selected_idx+1] * 100,
             mode='lines+markers',
             name='Observed Network Risk (%)',
-            line=dict(color='#00D2FF', width=3)
+            line=dict(color='#38BDF8', width=3)
         ))
 
         future_ts = [f"t+{r['step_index']} ({r['horizon_step']})" for r in rollout_results]
@@ -293,11 +505,11 @@ def main():
             y=[all_probs[selected_idx] * 100] + future_probs,
             mode='lines+markers',
             name=f'Forecasted Rollout ({selected_model_name})',
-            line=dict(color='#FF1744', width=3, dash='dash')
+            line=dict(color='#EF4444', width=3, dash='dash')
         ))
 
-        fig.add_hline(y=config['forecasting']['warning_threshold']*100, line_dash="dot", line_color="#FFEA00", annotation_text="Warning Threshold (70%)")
-        fig.add_hline(y=config['forecasting']['critical_threshold']*100, line_dash="dot", line_color="#FF1744", annotation_text="Critical Threshold (85%)")
+        fig.add_hline(y=config['forecasting']['warning_threshold']*100, line_dash="dot", line_color="#F97316", annotation_text="Warning Threshold (70%)")
+        fig.add_hline(y=config['forecasting']['critical_threshold']*100, line_dash="dot", line_color="#EF4444", annotation_text="Critical Threshold (85%)")
 
         fig.update_layout(
             title=f"Temporal Network Attack Probability Timeline ({selected_model_name})",
@@ -308,15 +520,16 @@ def main():
         )
         st.plotly_chart(fig, use_container_width=True)
 
+    # ----------------------------------------------------
     # PAGE 3: ATTACK PROGRESSION
+    # ----------------------------------------------------
     elif page == "3. Attack Progression":
         st.subheader("🎯 MITRE ATT&CK Stage Progression Mapping")
 
         current_stage_id = rollout_results[0]['predicted_stage_id']
         current_stage_info = get_stage_details(current_stage_id)
 
-        st.info(f"**Current Forecasted Stage:** Stage {current_stage_id} - **{current_stage_info['name']}** (MITRE ID: {current_stage_info['mitre_id']})")
-        st.write(current_stage_info['description'])
+        st.info(f"**Current Forecasted Stage:** Stage {current_stage_id} - **{current_stage_info['name']}** (MITRE ID: {current_stage_info['mitre_id']})\n\n{current_stage_info['description']}")
 
         st.markdown("### Stage Pipeline")
         cols = st.columns(6)
@@ -324,23 +537,39 @@ def main():
             s_data = get_stage_details(s_id)
             with cols[s_id]:
                 if s_id == current_stage_id:
-                    st.success(f"📍 **Stage {s_id}**\n\n**{s_data['name']}**")
+                    st.markdown(f"""
+                    <div style="background: #064E3B; border: 2px solid #10B981; border-radius: 8px; padding: 12px; text-align: center;">
+                        <div style="font-size: 11px; color: #6EE7B7; font-weight: 700;">STAGE {s_id} (ACTIVE)</div>
+                        <div style="font-size: 14px; color: #FFFFFF; font-weight: 700; margin-top: 4px;">{s_data['name']}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
                 elif s_id < current_stage_id:
-                    st.markdown(f"✅ Stage {s_id}\n\n{s_data['name']}")
+                    st.markdown(f"""
+                    <div style="background: #151C28; border: 1px solid #334155; border-radius: 8px; padding: 12px; text-align: center;">
+                        <div style="font-size: 11px; color: #94A3B8;">STAGE {s_id}</div>
+                        <div style="font-size: 13px; color: #CBD5E1; margin-top: 4px;">✓ {s_data['name']}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
                 else:
-                    st.markdown(f"⚪ Stage {s_id}\n\n{s_data['name']}")
+                    st.markdown(f"""
+                    <div style="background: #0F141C; border: 1px solid #1E293B; border-radius: 8px; padding: 12px; text-align: center; opacity: 0.6;">
+                        <div style="font-size: 11px; color: #64748B;">STAGE {s_id}</div>
+                        <div style="font-size: 13px; color: #64748B; margin-top: 4px;">{s_data['name']}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
         st.markdown("---")
         st.subheader("🔍 Stage Indicators & Key Telemetry Markers")
         for key_ind in current_stage_info['key_indicators']:
-            st.markdown(f"- 🚩 {key_ind}")
+            st.markdown(f"- 🚩 **{key_ind}**")
 
+    # ----------------------------------------------------
     # PAGE 4: NETWORK GRAPH TOPOLOGY
+    # ----------------------------------------------------
     elif page == "4. Network Graph Topology":
-        st.subheader("🕸️ Dynamic Host Communication Graph G(t)")
+        st.subheader("NETWORK COMMUNICATION GRAPH")
         st.caption("Visualizing host nodes (IPs), directed communication edges, and structural node degree anomalies.")
 
-        # Build graph for current window
         df_sorted = df.sort_values(by='Timestamp').set_index('Timestamp')
         grouped_win = df_sorted.resample(f"{int(window_sec)}s")
         win_dfs = [grp for _, grp in grouped_win]
@@ -357,8 +586,13 @@ def main():
         with col_g3:
             st.metric("High-Risk Host Endpoints", len(g_analysis['high_risk_nodes']))
 
-        st.markdown("---")
-        st.markdown("### Network Topology Graph Visualizer")
+        st.markdown("""
+        <div style="background: #151C28; padding: 10px 16px; border-radius: 6px; border: 1px solid #232D3F; margin-bottom: 12px; display: flex; gap: 20px; font-size: 13px;">
+            <div><span style="color:#38BDF8;">●</span> <b>Internal Host</b> (Normal Node)</div>
+            <div><span style="color:#EF4444;">●</span> <b>Suspicious Host</b> (High-Risk Anomaly)</div>
+            <div><span style="color:#64748B;">──</span> <b>Communication</b> (Flow Edge)</div>
+        </div>
+        """, unsafe_allow_html=True)
 
         # Construct NetworkX Graph for Plotly rendering
         G = nx.DiGraph()
@@ -384,7 +618,7 @@ def main():
 
         edge_trace = go.Scatter(
             x=edge_x, y=edge_y,
-            line=dict(width=1, color='#888'),
+            line=dict(width=1, color='#475569'),
             hoverinfo='none',
             mode='lines'
         )
@@ -402,9 +636,9 @@ def main():
             node_y.append(y)
             node_text.append(f"Host IP: {node}")
             if node in high_risk_ips:
-                node_color.append('#FF1744') # Red for high risk
+                node_color.append('#EF4444')
             else:
-                node_color.append('#00D2FF') # Blue for normal
+                node_color.append('#38BDF8')
 
         node_trace = go.Scatter(
             x=node_x, y=node_y,
@@ -433,15 +667,18 @@ def main():
 
         st.plotly_chart(fig_graph, use_container_width=True)
 
+    # ----------------------------------------------------
     # PAGE 5: EXPLAINABILITY
+    # ----------------------------------------------------
     elif page == "5. Explainability":
-        st.subheader("🧠 Model Explainability & Feature Attribution")
+        st.subheader("WHY IS THE MODEL CONCERNED?")
+        st.caption("Feature Attribution & Gradient Saliency Breakdown")
 
         from explainability.shap_explainer import GradientSaliencyExplainer
         explainer = GradientSaliencyExplainer(active_model_obj, scaler)
         explanation = explainer.explain_instance(current_seq_orig)
 
-        st.info(f"ℹ️ **Explanation Method:** {explanation['method']}\n\n*Note: This view displays fast real-time gradient saliency attributions. Deep offline SHAP KernelExplainer analysis is available for offline batch reporting.*")
+        st.info(f"ℹ️ **Explanation Method:** {explanation['method']}\n\n*Displaying real-time gradient saliency attributions for the current window prediction.*")
 
         top_feats = explanation['top_features']
         top_df = pd.DataFrame(top_feats)
@@ -451,18 +688,21 @@ def main():
             x='attribution',
             y='feature',
             orientation='h',
-            title=f"Top 10 Feature Contributions to Predicted Attack Risk S(t+1) [{selected_model_name}]",
+            title=f"Top 10 Feature Contributions to Predicted Attack Risk [{selected_model_name}]",
             labels={'attribution': 'Attribution Weight', 'feature': 'Network State Feature'},
             color='attribution',
-            color_continuous_scale=px.colors.diverging.Tealrose,
+            color_continuous_scale=px.colors.sequential.Teal,
             template="plotly_dark"
         )
+        fig_exp.update_layout(yaxis=dict(autorange="reversed"))
         st.plotly_chart(fig_exp, use_container_width=True)
 
-        st.markdown("### Detailed Feature Importance Table")
-        st.dataframe(top_df[['feature', 'attribution', 'original_value', 'scaled_value']])
+        st.markdown("### Detailed Feature Attribution Table")
+        st.dataframe(top_df[['feature', 'attribution', 'original_value', 'scaled_value']], use_container_width=True)
 
+    # ----------------------------------------------------
     # PAGE 6: TRAFFIC EXPLORER
+    # ----------------------------------------------------
     elif page == "6. Traffic Explorer":
         st.subheader("🔍 Flow Telemetry Explorer")
 
@@ -487,7 +727,9 @@ def main():
 
         st.dataframe(filtered_df, use_container_width=True, height=450)
 
+    # ----------------------------------------------------
     # PAGE 7: MODEL PERFORMANCE & COMPARISON
+    # ----------------------------------------------------
     elif page == "7. Model Performance":
         st.subheader("📊 Comparative Benchmark Evaluation (4 Models)")
 
@@ -546,9 +788,6 @@ def main():
                 {"Model": "Proposed (Temporal LSTM World Model)", **m3},
                 {"Model": "Experimental (Temporal GNN + LSTM)", **m4}
             ])
-            st.dataframe(comp_table, use_container_width=True)
-        else:
-            st.info("Run model comparison script (`python training/compare_models.py`) to generate comparative benchmarks.")
             st.dataframe(comp_table, use_container_width=True)
         else:
             st.info("Run model comparison script (`python training/compare_models.py`) to generate comparative benchmarks.")

@@ -28,3 +28,9 @@ data/raw/*.pcapng
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+# Local real cybersecurity datasets
+data/real/
+
+# Temporary uploaded demo files
+data/demo/uploaded_temp.pcap
