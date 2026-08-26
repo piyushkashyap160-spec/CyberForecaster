@@ -1,88 +1,116 @@
 {
     "evaluation_metadata": {
         "dataset": "Synthetic Demo Dataset (interleaved scenarios)",
-        "total_flows": 4800,
-        "total_states": 240,
+        "total_flows": 14400,
+        "total_states": 720,
         "sequence_length": 10,
-        "test_samples": 35,
-        "benign_test_samples": 30,
-        "attack_test_samples": 5,
+        "test_samples": 108,
+        "benign_test_samples": 54,
+        "attack_test_samples": 54,
         "decision_threshold": 0.5
     },
     "Model_1_Static_Logistic_Regression": {
-        "Precision": 0.8333333333333334,
-        "Recall": 1.0,
-        "F1_Score": 0.9090909090909091,
-        "FPR": 0.03333333333333333,
-        "TP": 5,
-        "FP": 1,
-        "TN": 29,
-        "FN": 0,
+        "Precision": 0.9444444444444444,
+        "Recall": 0.9444444444444444,
+        "F1_Score": 0.9444444444444444,
+        "FPR": 0.05555555555555555,
+        "TP": 51,
+        "FP": 3,
+        "TN": 51,
+        "FN": 3,
         "NextState_MAE": "N/A",
         "NextState_MSE": "N/A",
-        "NextState_RMSE": "N/A"
+        "NextState_RMSE": "N/A",
+        "Forecast_Lead_Time": {
+            "mean_lead_time_seconds": -5.0,
+            "median_lead_time_seconds": -5.0,
+            "max_lead_time_seconds": -5.0,
+            "episodes_detected": 3,
+            "total_episodes": 3
+        }
     },
     "Model_2_Temporal_Logistic_Regression": {
-        "Precision": 0.75,
-        "Recall": 0.6,
-        "F1_Score": 0.6666666666666666,
-        "FPR": 0.03333333333333333,
-        "TP": 3,
-        "FP": 1,
-        "TN": 29,
-        "FN": 2,
+        "Precision": 0.9423076923076923,
+        "Recall": 0.9074074074074074,
+        "F1_Score": 0.9245283018867925,
+        "FPR": 0.05555555555555555,
+        "TP": 49,
+        "FP": 3,
+        "TN": 51,
+        "FN": 5,
         "NextState_MAE": "N/A",
         "NextState_MSE": "N/A",
-        "NextState_RMSE": "N/A"
+        "NextState_RMSE": "N/A",
+        "Forecast_Lead_Time": {
+            "mean_lead_time_seconds": -5.0,
+            "median_lead_time_seconds": -5.0,
+            "max_lead_time_seconds": -5.0,
+            "episodes_detected": 3,
+            "total_episodes": 3
+        }
     },
     "Model_3_Temporal_LSTM_WorldModel": {
-        "Precision": 0.8333,
-        "Recall": 1.0,
-        "F1_Score": 0.9091,
-        "FPR": 0.0333,
-        "TP": 5,
-        "FP": 1,
-        "TN": 29,
-        "FN": 0,
-        "NextState_MAE": 1.037608,
-        "NextState_MSE": 41.64114,
-        "NextState_RMSE": 6.452995,
+        "Precision": 0.9444,
+        "Recall": 0.9444,
+        "F1_Score": 0.9444,
+        "FPR": 0.0556,
+        "TP": 51,
+        "FP": 3,
+        "TN": 51,
+        "FN": 3,
+        "NextState_MAE": 0.386446,
+        "NextState_MSE": 0.431023,
+        "NextState_RMSE": 0.656523,
         "Prob_Benign_Samples": {
-            "mean": 0.0502,
-            "median": 0.0112,
-            "min": 0.0091,
-            "max": 0.9964
+            "mean": 0.0834,
+            "median": 0.0265,
+            "min": 0.0201,
+            "max": 0.9518
         },
         "Prob_Attack_Samples": {
-            "mean": 0.9964,
-            "median": 0.9964,
-            "min": 0.9964,
-            "max": 0.9964
+            "mean": 0.8946,
+            "median": 0.9504,
+            "min": 0.022,
+            "max": 0.9759
+        },
+        "Forecast_Lead_Time": {
+            "mean_lead_time_seconds": -5.0,
+            "median_lead_time_seconds": -5.0,
+            "max_lead_time_seconds": -5.0,
+            "episodes_detected": 3,
+            "total_episodes": 3
         }
     },
     "Model_4_Temporal_GNN_WorldModel": {
-        "Precision": 0.8333,
-        "Recall": 1.0,
-        "F1_Score": 0.9091,
-        "FPR": 0.0333,
-        "TP": 5,
-        "FP": 1,
-        "TN": 29,
-        "FN": 0,
-        "NextState_MAE": 1.04032,
-        "NextState_MSE": 42.054276,
-        "NextState_RMSE": 6.484927,
+        "Precision": 0.9444,
+        "Recall": 0.9444,
+        "F1_Score": 0.9444,
+        "FPR": 0.0556,
+        "TP": 51,
+        "FP": 3,
+        "TN": 51,
+        "FN": 3,
+        "NextState_MAE": 0.338245,
+        "NextState_MSE": 0.402802,
+        "NextState_RMSE": 0.634667,
         "Prob_Benign_Samples": {
-            "mean": 0.0624,
-            "median": 0.0255,
-            "min": 0.0184,
-            "max": 0.9829
+            "mean": 0.0635,
+            "median": 0.01,
+            "min": 0.0072,
+            "max": 0.9685
         },
         "Prob_Attack_Samples": {
-            "mean": 0.9829,
-            "median": 0.9829,
-            "min": 0.9823,
-            "max": 0.9832
+            "mean": 0.9077,
+            "median": 0.9629,
+            "min": 0.0092,
+            "max": 0.9787
+        },
+        "Forecast_Lead_Time": {
+            "mean_lead_time_seconds": -5.0,
+            "median_lead_time_seconds": -5.0,
+            "max_lead_time_seconds": -5.0,
+            "episodes_detected": 3,
+            "total_episodes": 3
         }
     }
 }

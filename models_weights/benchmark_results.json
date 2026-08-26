@@ -2,113 +2,97 @@
     "dataset_info": {
         "dataset_name": "Synthetic Demo Dataset (interleaved scenarios)",
         "note": "Synthetic demonstration data \u2014 not a substitute for real-world evaluation.",
-        "total_test_samples": 35,
-        "benign_samples": 30,
-        "attack_samples": 5,
+        "total_test_samples": 108,
+        "benign_samples": 54,
+        "attack_samples": 54,
         "class_distribution": {
-            "Benign_Ratio": 0.8571,
-            "Attack_Ratio": 0.1429
+            "Benign_Ratio": 0.5,
+            "Attack_Ratio": 0.5
         }
     },
     "Baseline_LogisticRegression": {
-        "Precision": 0.8333333333333334,
-        "Recall": 1.0,
-        "F1_Score": 0.9090909090909091,
-        "FPR": 0.03333333333333333,
+        "Precision": 0.9444444444444444,
+        "Recall": 0.9444444444444444,
+        "F1_Score": 0.9444444444444444,
+        "FPR": 0.05555555555555555,
         "Confusion_Matrix": {
-            "TP": 5,
-            "FP": 1,
-            "TN": 29,
-            "FN": 0
+            "TP": 51,
+            "FP": 3,
+            "TN": 51,
+            "FN": 3
         }
     },
     "Temporal_LSTM_WorldModel": {
-        "Precision": 0.8333,
-        "Recall": 1.0,
-        "F1_Score": 0.9091,
-        "FPR": 0.0333,
+        "Precision": 0.9444,
+        "Recall": 0.9444,
+        "F1_Score": 0.9444,
+        "FPR": 0.0556,
         "Confusion_Matrix": {
-            "TP": 5,
-            "FP": 1,
-            "TN": 29,
-            "FN": 0
+            "TP": 51,
+            "FP": 3,
+            "TN": 51,
+            "FN": 3
         },
-        "NextState_MAE": 1.037608,
-        "NextState_MSE": 41.64114,
-        "NextState_RMSE": 6.452995,
+        "NextState_MAE": 0.386446,
+        "NextState_MSE": 0.431023,
+        "NextState_RMSE": 0.656523,
         "Representative_Feature_MAE": {
-            "syn_ratio": 0.0279,
-            "port_entropy": 0.4169,
-            "total_bytes": 1889348.875,
-            "mean_IAT": 0.0449
+            "syn_ratio": 0.0459,
+            "port_entropy": 0.2539,
+            "total_bytes": 449797.125,
+            "mean_IAT": 0.0585
         },
-        "Forecast_Lead_Time": "0.0 seconds (0 windows lead time)",
+        "Forecast_Lead_Time": "0.0 seconds (-1 windows lead time)",
         "Forecast_Lead_Time_Seconds": 0.0
     },
     "Horizon_Wise_Forecasting": {
         "t+1": {
-            "Precision": 0.6667,
-            "Recall": 1.0,
-            "F1_Score": 0.8,
-            "FPR": 0.0667
+            "Precision": 0.8889,
+            "Recall": 0.8889,
+            "F1_Score": 0.8889,
+            "FPR": 0.1132
         },
         "t+2": {
-            "Precision": 0.5,
-            "Recall": 1.0,
-            "F1_Score": 0.6667,
-            "FPR": 0.1
+            "Precision": 0.8333,
+            "Recall": 0.8333,
+            "F1_Score": 0.8333,
+            "FPR": 0.1731
         },
         "t+3": {
-            "Precision": 0.2857,
-            "Recall": 1.0,
-            "F1_Score": 0.4444,
-            "FPR": 0.1667
+            "Precision": 0.7778,
+            "Recall": 0.7778,
+            "F1_Score": 0.7778,
+            "FPR": 0.2353
         },
         "t+4": {
-            "Precision": 0.1429,
-            "Recall": 1.0,
-            "F1_Score": 0.25,
-            "FPR": 0.2
+            "Precision": 0.7222,
+            "Recall": 0.7222,
+            "F1_Score": 0.7222,
+            "FPR": 0.3
         },
         "t+5": {
-            "Precision": 0.0,
-            "Recall": 0.0,
-            "F1_Score": 0.0,
-            "FPR": 0.2333
+            "Precision": 0.6667,
+            "Recall": 0.6667,
+            "F1_Score": 0.6667,
+            "FPR": 0.3673
         }
     },
     "Stage_Prediction_MITRE": {
-        "Weighted_Precision": 0.8571,
-        "Weighted_Recall": 0.8286,
-        "Weighted_F1": 0.8426,
+        "Weighted_Precision": 0.9444,
+        "Weighted_Recall": 0.9444,
+        "Weighted_F1": 0.9444,
         "Confusion_Matrix": [
             [
-                29,
-                0,
+                51,
+                1,
                 0,
                 1,
                 0,
-                0
+                1
             ],
             [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0
-            ],
-            [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0
-            ],
-            [
-                0,
-                0,
+                1,
+                17,
                 0,
                 0,
                 0,
@@ -123,12 +107,28 @@
                 0
             ],
             [
+                1,
                 0,
                 0,
-                0,
-                5,
+                17,
                 0,
                 0
+            ],
+            [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                1,
+                0,
+                0,
+                0,
+                0,
+                17
             ]
         ]
     }

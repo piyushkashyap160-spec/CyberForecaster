@@ -48,14 +48,15 @@ def build_network_states(df: pd.DataFrame, window_seconds: float = 5.0) -> List[
 
     return states
 
-def create_sequences(states: List[Dict], sequence_length: int = 10) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, List]:
+def create_sequences(states: List[Dict], sequence_length: int = 10, forecast_steps: int = 1) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, List]:
     """
     Creates rolling window sequences [S(t-L+1)...S(t)] and target Next State S(t+1), attack prob, stage.
+    If forecast_steps > 1, y_state, y_attack, y_stage will have shape (N, forecast_steps, ...) for multi-step training.
     Returns:
         X: (N, L, 23)
-        y_state: (N, 23)
-        y_attack: (N,)
-        y_stage: (N,)
+        y_state: (N, 23) if forecast_steps==1 else (N, forecast_steps, 23)
+        y_attack: (N,) if forecast_steps==1 else (N, forecast_steps)
+        y_stage: (N,) if forecast_steps==1 else (N, forecast_steps)
         timestamps: list of target timestamps
     """
     X_list = []
@@ -69,12 +70,20 @@ def create_sequences(states: List[Dict], sequence_length: int = 10) -> Tuple[np.
     stages = [s['stage'] for s in states]
     timestamps = [s['timestamp'] for s in states]
 
-    for i in range(len(states) - sequence_length):
+    max_idx = len(states) - sequence_length - (forecast_steps - 1)
+    for i in range(max_idx):
         seq = vectors[i : i + sequence_length]
-        next_vec = vectors[i + sequence_length]
-        next_attack = is_attacks[i + sequence_length]
-        next_stage = stages[i + sequence_length]
-        next_ts = timestamps[i + sequence_length]
+        
+        if forecast_steps == 1:
+            next_vec = vectors[i + sequence_length]
+            next_attack = is_attacks[i + sequence_length]
+            next_stage = stages[i + sequence_length]
+            next_ts = timestamps[i + sequence_length]
+        else:
+            next_vec = [vectors[i + sequence_length + k] for k in range(forecast_steps)]
+            next_attack = [is_attacks[i + sequence_length + k] for k in range(forecast_steps)]
+            next_stage = [stages[i + sequence_length + k] for k in range(forecast_steps)]
+            next_ts = [timestamps[i + sequence_length + k] for k in range(forecast_steps)]
 
         X_list.append(seq)
         y_state_list.append(next_vec)
@@ -91,3 +100,4 @@ def create_sequences(states: List[Dict], sequence_length: int = 10) -> Tuple[np.
     y_stage = np.array(y_stage_list, dtype=np.int64)
 
     return X, y_state, y_attack, y_stage, target_timestamps
+

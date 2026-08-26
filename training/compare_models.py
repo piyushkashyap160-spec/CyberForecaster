@@ -125,6 +125,33 @@ def compare_all_models(config_path: str = "config.yaml") -> dict:
     m3_pred = (p_attack_m3_np >= 0.5).astype(int)
     m3_TP, m3_FP, m3_TN, m3_FN = _confusion_matrix_counts(y_attack_test.astype(int), m3_pred)
 
+    # 3b. Optional Model 3b: Temporal LSTM World Model (PCAP Features Ablation)
+    pcap_weights_path = "models_weights/lstm_world_model_pcap.pt"
+    has_pcap_model = os.path.exists(pcap_weights_path)
+    if has_pcap_model:
+        lstm_model_pcap = TemporalLSTMWorldModel(
+            input_size=config['model']['input_size'],
+            hidden_size=config['model']['hidden_size'],
+            num_layers=config['model']['num_layers'],
+            dropout=config['model']['dropout'],
+            num_stages=config['model']['num_stages']
+        ).to(device)
+        lstm_model_pcap.load_state_dict(torch.load(pcap_weights_path, map_location=device))
+        lstm_model_pcap.eval()
+
+        with torch.no_grad():
+            p_state_m3b, p_attack_m3b, _ = lstm_model_pcap(X_tensor)
+        p_attack_m3b_np = p_attack_m3b.cpu().numpy().flatten()
+        m3b_cls = compute_classification_metrics(y_attack_test, p_attack_m3b_np)
+        m3b_reg = compute_regression_metrics(y_state_test_scaled, p_state_m3b.cpu().numpy())
+        m3b_pred = (p_attack_m3b_np >= 0.5).astype(int)
+        m3b_TP, m3b_FP, m3b_TN, m3b_FN = _confusion_matrix_counts(y_attack_test.astype(int), m3b_pred)
+        m3b_benign_stats = _prob_stats(p_attack_m3b_np, y_attack_test.astype(int), 0)
+        m3b_attack_stats = _prob_stats(p_attack_m3b_np, y_attack_test.astype(int), 1)
+        m3b_lead = compute_forecast_lead_time(y_attack_test, p_attack_m3b_np, window_seconds=window_sec)
+
+
+
     # 4. Model 4: Temporal GNN + LSTM World Model (Experimental)
     gnn_model = TemporalGNNWorldModel(
         node_dim=10,
@@ -189,6 +216,17 @@ def compare_all_models(config_path: str = "config.yaml") -> dict:
     m4_benign_stats = _prob_stats(p_attack_m4_np, y_attack_test.astype(int), 0)
     m4_attack_stats = _prob_stats(p_attack_m4_np, y_attack_test.astype(int), 1)
 
+    from forecasting.lead_time import compute_forecast_lead_time
+
+    m1_pred_prob = static_baseline.predict_proba(X_test_scaled)
+    m1_lead = compute_forecast_lead_time(y_attack_test, m1_pred_prob, window_seconds=window_sec)
+
+    m2_pred_prob = temp_baseline.predict_proba(X_test_scaled)
+    m2_lead = compute_forecast_lead_time(y_attack_test, m2_pred_prob, window_seconds=window_sec)
+
+    m3_lead = compute_forecast_lead_time(y_attack_test, p_attack_m3_np, window_seconds=window_sec)
+    m4_lead = compute_forecast_lead_time(y_attack_test, p_attack_m4_np, window_seconds=window_sec)
+
     comparison_results = {
         'evaluation_metadata': {
             'dataset': "Synthetic Demo Dataset (interleaved scenarios)",
@@ -206,7 +244,8 @@ def compare_all_models(config_path: str = "config.yaml") -> dict:
             'F1_Score': m1_cls['f1'],
             'FPR': m1_cls['fpr'],
             'TP': m1_TP, 'FP': m1_FP, 'TN': m1_TN, 'FN': m1_FN,
-            'NextState_MAE': "N/A", 'NextState_MSE': "N/A", 'NextState_RMSE': "N/A"
+            'NextState_MAE': "N/A", 'NextState_MSE': "N/A", 'NextState_RMSE': "N/A",
+            'Forecast_Lead_Time': m1_lead
         },
         'Model_2_Temporal_Logistic_Regression': {
             'Precision': m2_cls['precision'],
@@ -214,7 +253,8 @@ def compare_all_models(config_path: str = "config.yaml") -> dict:
             'F1_Score': m2_cls['f1'],
             'FPR': m2_cls['fpr'],
             'TP': m2_TP, 'FP': m2_FP, 'TN': m2_TN, 'FN': m2_FN,
-            'NextState_MAE': "N/A", 'NextState_MSE': "N/A", 'NextState_RMSE': "N/A"
+            'NextState_MAE': "N/A", 'NextState_MSE': "N/A", 'NextState_RMSE': "N/A",
+            'Forecast_Lead_Time': m2_lead
         },
         'Model_3_Temporal_LSTM_WorldModel': {
             'Precision': m3_cls['precision'],
@@ -226,7 +266,8 @@ def compare_all_models(config_path: str = "config.yaml") -> dict:
             'NextState_MSE': m3_reg['mse'],
             'NextState_RMSE': round(float(np.sqrt(m3_reg['mse'])), 6),
             'Prob_Benign_Samples': m3_benign_stats,
-            'Prob_Attack_Samples': m3_attack_stats
+            'Prob_Attack_Samples': m3_attack_stats,
+            'Forecast_Lead_Time': m3_lead
         },
         'Model_4_Temporal_GNN_WorldModel': {
             'Precision': m4_cls['precision'],
@@ -238,9 +279,26 @@ def compare_all_models(config_path: str = "config.yaml") -> dict:
             'NextState_MSE': m4_reg['mse'],
             'NextState_RMSE': round(float(np.sqrt(m4_reg['mse'])), 6),
             'Prob_Benign_Samples': m4_benign_stats,
-            'Prob_Attack_Samples': m4_attack_stats
+            'Prob_Attack_Samples': m4_attack_stats,
+            'Forecast_Lead_Time': m4_lead
         }
     }
+
+    if has_pcap_model:
+        comparison_results['Model_3b_Temporal_LSTM_WorldModel_PCAP_Ablation'] = {
+            'Precision': m3b_cls['precision'],
+            'Recall': m3b_cls['recall'],
+            'F1_Score': m3b_cls['f1'],
+            'FPR': m3b_cls['fpr'],
+            'TP': m3b_TP, 'FP': m3b_FP, 'TN': m3b_TN, 'FN': m3b_FN,
+            'NextState_MAE': m3b_reg['mae'],
+            'NextState_MSE': m3b_reg['mse'],
+            'NextState_RMSE': round(float(np.sqrt(m3b_reg['mse'])), 6),
+            'Prob_Benign_Samples': m3b_benign_stats,
+            'Prob_Attack_Samples': m3b_attack_stats,
+            'Forecast_Lead_Time': m3b_lead
+        }
+
 
     # Save to both demo_results.json and model_comparison.json
     out_demo = "experiments/results/demo_results.json"

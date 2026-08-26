@@ -1,7 +1,10 @@
 import os
 import io
+import logging
 import pandas as pd
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 COLUMN_MAPPINGS = {
     # Timestamps
@@ -82,6 +85,12 @@ COLUMN_MAPPINGS = {
 
     'Pkt Len Var': 'Var_Pkt_Size',
 
+    # TTL mappings (present in PCAPs/custom tools, absent in default CICFlowMeter CSVs)
+    'ttl_mean': 'TTL_Mean',
+    'TTL_Mean': 'TTL_Mean',
+    'ttl_var': 'TTL_Var',
+    'TTL_Var': 'TTL_Var',
+
     # Label
     'label': 'Label',
     'Label': 'Label',
@@ -121,6 +130,11 @@ def load_flow_csv(file_input) -> pd.DataFrame:
     if 'Pkt Len Var' in df.columns and 'Var_Pkt_Size' not in df.columns:
         df['Var_Pkt_Size'] = pd.to_numeric(df['Pkt Len Var'], errors='coerce').fillna(0)
 
+    # Detect TTL feature availability
+    has_ttl = any(col in df.columns for col in ['TTL_Mean', 'ttl_mean', 'TTL_Var', 'ttl_var', 'TTL', 'ttl'])
+    if not has_ttl:
+        logging.warning("TTL features ('TTL_Mean', 'TTL_Var') are absent from loaded CSV data source. Using default fallbacks (ttl_mean=64.0, ttl_variance=0.0). TTL features are PCAP-only.")
+
     # Rename mapped columns safely without creating duplicate columns
     rename_dict = {}
     assigned_targets = set()
@@ -148,3 +162,4 @@ def load_flow_csv(file_input) -> pd.DataFrame:
     df[numeric_cols] = df[numeric_cols].replace([np.inf, -np.inf], 0)
 
     return df
+

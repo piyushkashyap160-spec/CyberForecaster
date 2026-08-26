@@ -35,21 +35,21 @@
         "tp": 1273
     },
     "Model_3_Temporal_LSTM_WorldModel": {
-        "Precision": 0.9963,
-        "Recall": 0.8442,
-        "F1_Score": 0.914,
-        "FPR": 0.8,
-        "NextState_MAE": 0.708495,
-        "NextState_MSE": 0.937956,
-        "NextState_RMSE": 0.968481
+        "Precision": 1.0,
+        "Recall": 0.2264,
+        "F1_Score": 0.3692,
+        "FPR": 0.0,
+        "NextState_MAE": 0.604385,
+        "NextState_MSE": 0.762089,
+        "NextState_RMSE": 0.872977
     },
     "Model_4_Temporal_GNN_WorldModel": {
         "Precision": 1.0,
-        "Recall": 0.0217,
-        "F1_Score": 0.0425,
+        "Recall": 0.4574,
+        "F1_Score": 0.6277,
         "FPR": 0.0,
-        "NextState_MAE": 0.665646,
-        "NextState_MSE": 0.957944,
-        "NextState_RMSE": 0.978746
+        "NextState_MAE": 0.600152,
+        "NextState_MSE": 0.785922,
+        "NextState_RMSE": 0.886522
     }
 }

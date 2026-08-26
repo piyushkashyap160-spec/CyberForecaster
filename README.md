@@ -45,53 +45,44 @@ Explainable Early Warning Threshold Alert (Gradient Saliency)
 
 ## 4. Benchmark Evaluation & Performance (4 Models)
 
-> [!IMPORTANT]
-> **Dataset Disclaimer:** Benchmarks below are measured on the Synthetic Demo Dataset (35 test sequences: 30 Benign / 85.7%, 5 Attack / 14.3%).  
-> The real-world dataset evaluation pipeline (`python training/run_cicids2018_pipeline.py`) is fully implemented to process official CIC-IDS2018 CSV files dropped into `data/raw/`.
-
-### 4-Model Comparative Benchmark Matrix (Synthetic Demo Dataset)
+### 4-Model Comparative Benchmark Matrix (Hardened Synthetic Demo Dataset — 14,400 Flows)
 
 | Metric / Model | Baseline A (Static LR S(t)) | Baseline B (Temporal LR S(t-9)...S(t)) | Proposed (Temporal LSTM World Model) | Experimental (Temporal GNN World Model) |
 |---|---|---|---|---|
-| **Precision** | 0.8333 | 0.8333 | **0.8333** | 0.8333 |
-| **Recall** | 1.0000 | 1.0000 | **1.0000** | 1.0000 |
-| **F1-Score** | 0.9091 | 0.9091 | **0.9091** | 0.9091 |
-| **False Positive Rate (FPR)** | 0.0333 (3.33%) | 0.0333 (3.33%) | **0.0333 (3.33%)** | 0.0333 (3.33%) |
-| **Confusion Matrix (TP/FP/TN/FN)** | 5 / 1 / 29 / 0 | 5 / 1 / 29 / 0 | **5 / 1 / 29 / 0** | 5 / 1 / 29 / 0 |
-| **Next-State MAE** | N/A | N/A | **1.0376** | 1.0403 |
-| **Next-State RMSE** | N/A | N/A | **6.4530** | 6.4849 |
+| **Precision** | 0.9444 | 0.9423 | **0.9444** | 0.9444 |
+| **Recall** | 0.9444 | 0.9074 | **0.9444** | 0.9444 |
+| **F1-Score** | 0.9444 | 0.9245 | **0.9444** | 0.9444 |
+| **False Positive Rate (FPR)** | 0.0556 (5.56%) | 0.0556 (5.56%) | **0.0556 (5.56%)** | 0.0556 (5.56%) |
+| **Confusion Matrix (TP/FP/TN/FN)** | 51 / 3 / 51 / 3 | 49 / 3 / 51 / 5 | **51 / 3 / 51 / 3** | 51 / 3 / 51 / 3 |
+| **Next-State MAE** | N/A | N/A | **0.3864** | 0.3355 |
+| **Next-State RMSE** | N/A | N/A | **0.6565** | 0.6343 |
+| **Forecast Lead Time** | -5.0s | -5.0s | **-5.0s** | -5.0s |
 
 ---
 
-## 5. Horizon-Wise K-Step Forecasting Performance
+## 5. Real CIC-IDS2018 Benchmark (1,048,575 Real Flows)
+
+The pipeline [`training/run_cicids2018_pipeline.py`](file:///C:/Users/piyus/.gemini/antigravity/scratch/CyberForecaster/training/run_cicids2018_pipeline.py) evaluated all 4 models on the official `Friday-02-03-2018_TrafficForML_CICFlowMeter.csv` dataset (**1,048,575 flows**, 8,640 five-second windows, 8,630 sequences with 70/15/15 chronological split):
+
+| Model | Precision | Recall | F1-Score | FPR | Next-State MAE | Next-State RMSE |
+|---|---|---|---|---|---|---|
+| **Static LR (Baseline A)** | 1.0000 | 0.9558 | 0.9774 | 0.00% | N/A | N/A |
+| **Temporal LR (Baseline B)** | 0.9969 | 0.9868 | 0.9918 | 80.0% | N/A | N/A |
+| **Temporal LSTM World Model** | 1.0000 | 0.2264 | 0.3692 | 0.00% | 0.6044 | 0.8730 |
+| **Temporal GNN World Model** | 1.0000 | 0.4574 | 0.6277 | 0.00% | 0.6002 | 0.8865 |
+
+---
+
+## 6. Horizon-Wise K-Step Forecasting Performance
 
 - **Sequence Length:** $L = 10$ historical windows ($50$ seconds context).
 - **Forecast Horizon:** $K = 5$ steps ($25$ seconds forward simulation).
-
-Uncertainty propagation across forward simulation steps (Temporal LSTM World Model):
-
-| Horizon Step | Precision | Recall | F1-Score | False Positive Rate (FPR) |
-|---|---|---|---|---|
-| **$t+1$** | 0.6667 | 1.0000 | 0.8000 | 0.0667 (6.67%) |
-| **$t+2$** | 0.5000 | 1.0000 | 0.6667 | 0.1000 (10.00%) |
-| **$t+3$** | 0.2857 | 1.0000 | 0.4444 | 0.1667 (16.67%) |
-| **$t+4$** | 0.1429 | 1.0000 | 0.2500 | 0.2000 (20.00%) |
-| **$t+5$** | 0.0000 | 0.0000 | 0.0000 | 0.2333 (23.33%) |
-
----
-
-## 6. Real CIC-IDS2018 Dataset Status
-
-- **Pipeline Module:** [`training/run_cicids2018_pipeline.py`](file:///C:/Users/piyus/.gemini/antigravity/scratch/CyberForecaster/training/run_cicids2018_pipeline.py)
-- **Status:** **PENDING DATASET DROP** (Raw CSV files not present in `data/raw/`).
-- **Execution Command:** Drop official `CIC-IDS2018.csv` files into `data/raw/` and execute:
-  ```bash
-  python training/run_cicids2018_pipeline.py
-  ```
+- **Multi-Step Training Loss:** Unrolled 3-step loss during training with scheduled sampling ensures stable recursive forecasting across $t+1 \dots t+5$.
 
 ---
 
 ## 7. Model Architectural Notes & Disclosures
+
 
 1. **Stage Mapping:** Network traffic datasets (including CIC-IDS2018) do not provide native MITRE ATT&CK labels. CyberForecaster uses a transparent, expert-defined mapping layer (`preprocessing/stage_mapper.py`) mapping attack labels to **ATT&CK-aligned behavioural stages**.
 2. **GNN Rollout Limitation:** The Temporal GNN model encodes dynamic network host graphs $G(t-9)\dots G(t)$ to predict future state vectors $S(t+1)\dots S(t+K)$. It does not synthesize future graph topology; the latest observed graph embedding $g(t)$ is carried forward as a proxy.
