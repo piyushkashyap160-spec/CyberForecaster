@@ -1,0 +1,55 @@
+{
+    "status": "completed",
+    "dataset_metadata": {
+        "name": "Official CIC-IDS2018 Dataset (Friday-02-03-2018)",
+        "files_processed": [
+            "data/real/cicids2018\\Friday-02-03-2018_TrafficForML_CICFlowMeter.csv"
+        ],
+        "total_flows": 1048575,
+        "total_5s_windows": 8640,
+        "total_sequence_samples": 8630,
+        "train_samples": 6041,
+        "val_samples": 1294,
+        "test_samples": 1295,
+        "has_ip_columns": false,
+        "gnn_graph_topology_note": "Src_IP/Dst_IP columns absent in processed CIC-IDS2018 file; GNN evaluated using single-node fallback graphs."
+    },
+    "Model_1_Static_Logistic_Regression": {
+        "precision": 1.0,
+        "recall": 0.9558139534883721,
+        "f1": 0.9774078478002378,
+        "fpr": 0.0,
+        "tn": 5,
+        "fp": 0,
+        "fn": 57,
+        "tp": 1233
+    },
+    "Model_2_Temporal_Logistic_Regression": {
+        "precision": 0.9968676585747847,
+        "recall": 0.9868217054263566,
+        "f1": 0.991819244253993,
+        "fpr": 0.8,
+        "tn": 1,
+        "fp": 4,
+        "fn": 17,
+        "tp": 1273
+    },
+    "Model_3_Temporal_LSTM_WorldModel": {
+        "Precision": 0.9963,
+        "Recall": 0.8442,
+        "F1_Score": 0.914,
+        "FPR": 0.8,
+        "NextState_MAE": 0.708495,
+        "NextState_MSE": 0.937956,
+        "NextState_RMSE": 0.968481
+    },
+    "Model_4_Temporal_GNN_WorldModel": {
+        "Precision": 1.0,
+        "Recall": 0.0217,
+        "F1_Score": 0.0425,
+        "FPR": 0.0,
+        "NextState_MAE": 0.665646,
+        "NextState_MSE": 0.957944,
+        "NextState_RMSE": 0.978746
+    }
+}
