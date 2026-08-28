@@ -1,10 +1,12 @@
 import os
 import io
 import logging
+from typing import Optional, Dict, List, Tuple, Union
 import pandas as pd
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
 
 COLUMN_MAPPINGS = {
     # Timestamps
