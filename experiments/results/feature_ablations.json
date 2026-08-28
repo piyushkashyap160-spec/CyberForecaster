@@ -1,0 +1,107 @@
+{
+    "A_23D_Flow_Only": {
+        "F1": 1.0,
+        "Precision": 1.0,
+        "Recall": 1.0,
+        "FPR": 0.0,
+        "State_RMSE_Scaled": 0.6768,
+        "Mean_Lead_Time": 0.0,
+        "Horizon_RMSE": {
+            "RMSE@1": 0.6499,
+            "RMSE@2": 0.6488,
+            "RMSE@3": 0.6485,
+            "RMSE@4": 0.6484,
+            "RMSE@5": 0.6483
+        }
+    },
+    "B_23D_plus_TTL_mean": {
+        "F1": 1.0,
+        "Precision": 1.0,
+        "Recall": 1.0,
+        "FPR": 0.0,
+        "State_RMSE_Scaled": 0.693,
+        "Mean_Lead_Time": 0.0,
+        "Horizon_RMSE": {
+            "RMSE@1": 0.6621,
+            "RMSE@2": 0.6609,
+            "RMSE@3": 0.6608,
+            "RMSE@4": 0.6607,
+            "RMSE@5": 0.6606
+        }
+    },
+    "C_23D_plus_TTL_var": {
+        "F1": 1.0,
+        "Precision": 1.0,
+        "Recall": 1.0,
+        "FPR": 0.0,
+        "State_RMSE_Scaled": 0.6851,
+        "Mean_Lead_Time": 0.0,
+        "Horizon_RMSE": {
+            "RMSE@1": 0.653,
+            "RMSE@2": 0.6544,
+            "RMSE@3": 0.6534,
+            "RMSE@4": 0.6533,
+            "RMSE@5": 0.6533
+        }
+    },
+    "D_23D_plus_pkt_size_var": {
+        "F1": 1.0,
+        "Precision": 1.0,
+        "Recall": 1.0,
+        "FPR": 0.0,
+        "State_RMSE_Scaled": 0.6636,
+        "Mean_Lead_Time": 0.0,
+        "Horizon_RMSE": {
+            "RMSE@1": 0.6373,
+            "RMSE@2": 0.6364,
+            "RMSE@3": 0.636,
+            "RMSE@4": 0.6357,
+            "RMSE@5": 0.6354
+        }
+    },
+    "E_23D_plus_pkt_iat_var": {
+        "F1": 1.0,
+        "Precision": 1.0,
+        "Recall": 1.0,
+        "FPR": 0.0,
+        "State_RMSE_Scaled": 0.6608,
+        "Mean_Lead_Time": 0.0,
+        "Horizon_RMSE": {
+            "RMSE@1": 0.6346,
+            "RMSE@2": 0.6348,
+            "RMSE@3": 0.6348,
+            "RMSE@4": 0.6347,
+            "RMSE@5": 0.6347
+        }
+    },
+    "F_23D_plus_port_entropy": {
+        "F1": 1.0,
+        "Precision": 1.0,
+        "Recall": 1.0,
+        "FPR": 0.0,
+        "State_RMSE_Scaled": 0.7067,
+        "Mean_Lead_Time": 0.0,
+        "Horizon_RMSE": {
+            "RMSE@1": 0.677,
+            "RMSE@2": 0.6794,
+            "RMSE@3": 0.6783,
+            "RMSE@4": 0.6783,
+            "RMSE@5": 0.6782
+        }
+    },
+    "G_30D_All_Packet_Feats": {
+        "F1": 1.0,
+        "Precision": 1.0,
+        "Recall": 1.0,
+        "FPR": 0.0,
+        "State_RMSE_Scaled": 0.6966,
+        "Mean_Lead_Time": 0.0,
+        "Horizon_RMSE": {
+            "RMSE@1": 0.6667,
+            "RMSE@2": 0.6678,
+            "RMSE@3": 0.6674,
+            "RMSE@4": 0.6673,
+            "RMSE@5": 0.6672
+        }
+    }
+}

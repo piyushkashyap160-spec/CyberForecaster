@@ -102,3 +102,38 @@ class TemporalLSTMWorldModel(nn.Module):
         """
         pred_state, _, _ = self.forward(x)
         return pred_state
+
+    def forward_with_mc_dropout(self, x: torch.Tensor, num_samples: int = 10):
+        """
+        Performs Monte Carlo Dropout stochastic forward passes for calibrated predictive uncertainty.
+        Returns:
+          mean_pred_state: (batch_size, input_size)
+          mean_attack_prob: (batch_size, 1)
+          var_attack_prob: (batch_size, 1) -- Epistemic / Model Uncertainty
+          mean_stage_logits: (batch_size, num_stages)
+        """
+        # Force dropout layers to remain active
+        self.train()
+
+        states, probs, stages = [], [], []
+
+        with torch.no_grad():
+            for _ in range(num_samples):
+                pred_s, p_att, s_log = self.forward(x)
+                states.append(pred_s.unsqueeze(0))
+                probs.append(p_att.unsqueeze(0))
+                stages.append(s_log.unsqueeze(0))
+
+        self.eval()
+
+        states_cat = torch.cat(states, dim=0) # (num_samples, batch, input_size)
+        probs_cat = torch.cat(probs, dim=0)    # (num_samples, batch, 1)
+        stages_cat = torch.cat(stages, dim=0)  # (num_samples, batch, num_stages)
+
+        mean_pred_state = torch.mean(states_cat, dim=0)
+        mean_attack_prob = torch.mean(probs_cat, dim=0)
+        var_attack_prob = torch.var(probs_cat, dim=0)
+        mean_stage_logits = torch.mean(stages_cat, dim=0)
+
+        return mean_pred_state, mean_attack_prob, var_attack_prob, mean_stage_logits
+

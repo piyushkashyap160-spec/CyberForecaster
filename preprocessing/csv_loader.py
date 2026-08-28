@@ -97,7 +97,7 @@ COLUMN_MAPPINGS = {
     'Stage': 'Stage'
 }
 
-def load_flow_csv(file_input) -> pd.DataFrame:
+def load_flow_csv(file_input, sample_nrows: Optional[int] = None) -> pd.DataFrame:
     """
     Loads flow-level dataset CSV and normalizes column headers across CIC-IDS datasets.
     Accepts:
@@ -107,11 +107,12 @@ def load_flow_csv(file_input) -> pd.DataFrame:
     if isinstance(file_input, (str, os.PathLike)):
         if not os.path.exists(file_input):
             raise FileNotFoundError(f"Dataset CSV not found at path: {file_input}")
-        df = pd.read_csv(file_input)
+        df = pd.read_csv(file_input, nrows=sample_nrows)
     elif hasattr(file_input, 'read') or isinstance(file_input, (io.BytesIO, io.StringIO, io.IOBase)):
-        df = pd.read_csv(file_input)
+        df = pd.read_csv(file_input, nrows=sample_nrows)
     else:
         raise TypeError(f"Expected file path string or file-like buffer, got {type(file_input)}")
+
 
     # Clean whitespace in column names
     df.columns = [str(c).strip() for c in df.columns]
@@ -150,10 +151,11 @@ def load_flow_csv(file_input) -> pd.DataFrame:
 
     # Convert Timestamp to pandas datetime if string
     if 'Timestamp' in df.columns:
-        df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce')
+        df['Timestamp'] = pd.to_datetime(df['Timestamp'], dayfirst=True, errors='coerce')
         # Drop rows with invalid timestamps
         df = df.dropna(subset=['Timestamp'])
         df = df.sort_values(by='Timestamp').reset_index(drop=True)
+
 
     # Fill NaNs in numeric columns
     numeric_cols = df.select_dtypes(include=[np.number]).columns

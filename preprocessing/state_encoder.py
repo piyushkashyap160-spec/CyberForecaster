@@ -1,9 +1,11 @@
 import numpy as np
 import pandas as pd
+from typing import Dict, Optional, List
 from preprocessing.flow_features import calculate_flow_ratios
 from preprocessing.packet_features import calculate_packet_metrics
 
-STATE_FEATURE_KEYS = [
+# Model A — Flow-Only 23-Dimensional State Vector
+STATE_FEATURE_KEYS_FLOW_ONLY = [
     'total_packets',
     'total_bytes',
     'unique_src_ips',
@@ -29,28 +31,70 @@ STATE_FEATURE_KEYS = [
     'connection_rate'
 ]
 
-def encode_window_to_state(df_window: pd.DataFrame, window_seconds: float = 5.0) -> dict:
+# Model B — Flow + Packet Enriched 30-Dimensional State Vector
+STATE_FEATURE_KEYS_ENRICHED = STATE_FEATURE_KEYS_FLOW_ONLY + [
+    'pcap_ttl_mean',
+    'pcap_ttl_var',
+    'pcap_ttl_min',
+    'pcap_ttl_max',
+    'pcap_pkt_size_var',
+    'pcap_iat_var',
+    'pcap_port_entropy'
+]
+
+# Default alias for backwards compatibility
+STATE_FEATURE_KEYS = STATE_FEATURE_KEYS_FLOW_ONLY
+
+
+def encode_window_to_state(
+    df_window: pd.DataFrame,
+    window_seconds: float = 5.0,
+    pcap_record: Optional[Dict] = None
+) -> dict:
     """
-    Encodes a single time window dataframe into a 23-dimensional network state dictionary and vector.
+    Encodes a single time window dataframe into a 23-dimensional (flow-only) or 30-dimensional (enriched)
+    network state dictionary and vector.
     """
     flow_metrics = calculate_flow_ratios(df_window)
     pkt_metrics = calculate_packet_metrics(df_window, window_seconds=window_seconds)
 
     state_dict = {**flow_metrics, **pkt_metrics}
-    
-    # Extract vector in exact feature order
-    vector = np.array([state_dict[key] for key in STATE_FEATURE_KEYS], dtype=np.float32)
+
+    if pcap_record:
+        # Merge genuine PCAP packet-level metrics
+        state_dict['ttl_mean'] = pcap_record.get('pcap_ttl_mean', state_dict['ttl_mean'])
+        state_dict['ttl_variance'] = pcap_record.get('pcap_ttl_var', state_dict['ttl_variance'])
+        state_dict['pcap_ttl_mean'] = pcap_record.get('pcap_ttl_mean', 64.0)
+        state_dict['pcap_ttl_var'] = pcap_record.get('pcap_ttl_var', 0.0)
+        state_dict['pcap_ttl_min'] = pcap_record.get('pcap_ttl_min', 64.0)
+        state_dict['pcap_ttl_max'] = pcap_record.get('pcap_ttl_max', 64.0)
+        state_dict['pcap_pkt_size_var'] = pcap_record.get('pcap_pkt_size_var', state_dict['packet_size_variance'])
+        state_dict['pcap_iat_var'] = pcap_record.get('pcap_iat_var', state_dict['IAT_variance'])
+        state_dict['pcap_port_entropy'] = pcap_record.get('pcap_port_entropy', state_dict['port_entropy'])
+    else:
+        # Fallbacks when PCAP is unavailable
+        state_dict['pcap_ttl_mean'] = state_dict['ttl_mean']
+        state_dict['pcap_ttl_var'] = state_dict['ttl_variance']
+        state_dict['pcap_ttl_min'] = state_dict['ttl_mean']
+        state_dict['pcap_ttl_max'] = state_dict['ttl_mean']
+        state_dict['pcap_pkt_size_var'] = state_dict['packet_size_variance']
+        state_dict['pcap_iat_var'] = state_dict['IAT_variance']
+        state_dict['pcap_port_entropy'] = state_dict['port_entropy']
+
+    # Vector A: 23-D Flow-only vector
+    vector_flow_only = np.array([state_dict[key] for key in STATE_FEATURE_KEYS_FLOW_ONLY], dtype=np.float32)
+
+    # Vector B: 30-D Enriched vector
+    vector_enriched = np.array([state_dict[key] for key in STATE_FEATURE_KEYS_ENRICHED], dtype=np.float32)
 
     # Determine ground truth attack label & stage if present in window
     is_attack = 0
     stage = 0
 
-    if 'Stage' in df_window.columns:
-        # Majority or maximum stage in window
+    if 'Stage' in df_window.columns and not df_window['Stage'].empty:
         stage = int(df_window['Stage'].mode()[0]) if not df_window['Stage'].empty else 0
         is_attack = 1 if stage > 0 else 0
     elif 'Label' in df_window.columns and not df_window['Label'].empty:
-        # Find non-benign label or mode label
         from preprocessing.stage_mapper import map_label_to_stage
         non_benign = [l for l in df_window['Label'].astype(str) if l.lower() != 'benign']
         target_label = non_benign[0] if non_benign else df_window['Label'].iloc[0]
@@ -60,7 +104,9 @@ def encode_window_to_state(df_window: pd.DataFrame, window_seconds: float = 5.0)
 
     return {
         'state_dict': state_dict,
-        'vector': vector,
+        'vector': vector_flow_only,
+        'vector_flow_only': vector_flow_only,
+        'vector_enriched': vector_enriched,
         'is_attack': is_attack,
         'stage': stage,
         'timestamp': df_window['Timestamp'].iloc[0] if 'Timestamp' in df_window.columns and not df_window.empty else None

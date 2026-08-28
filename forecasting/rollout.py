@@ -1,6 +1,7 @@
 import torch
 import numpy as np
-from typing import List, Dict
+from typing import List, Dict, Optional
+
 from models.lstm_world_model import TemporalLSTMWorldModel
 from preprocessing.scaler import StateScaler
 from preprocessing.state_encoder import STATE_FEATURE_KEYS
@@ -10,19 +11,15 @@ def perform_k_step_rollout(
     scaler: StateScaler,
     historical_sequence: np.ndarray,
     k_steps: int = 5,
-    device: torch.device = None
+    device: torch.device = None,
+    action: Optional[str] = "do_nothing"
 ) -> List[Dict]:
     """
-    Performs recursive K-step forward simulation:
+    Performs recursive K-step forward simulation with optional counterfactual intervention action:
     [S(t-9)...S(t)] -> S(t+1) -> S(t+2) -> ... -> S(t+K)
 
     Input historical_sequence: numpy array of shape (L, 23) in original feature scale.
-    Returns list of dicts for t+1 to t+K containing:
-      - step: horizon index (1..K)
-      - predicted_state_vector: inverse-scaled feature vector (23,)
-      - attack_probability: float [0, 1]
-      - predicted_stage_id: int (0..5)
-      - state_dict: map of feature names to values
+    Actions supported: 'do_nothing', 'rate_limit', 'block_port', 'isolate_host'
     """
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -44,8 +41,21 @@ def perform_k_step_rollout(
             attack_prob_val = float(attack_prob.cpu().numpy()[0, 0])
             stage_id = int(torch.argmax(stage_logits, dim=1).cpu().numpy()[0])
 
+            # Apply action-conditioned counterfactual mitigation adjustments
+            if action == "rate_limit":
+                attack_prob_val = max(0.02, attack_prob_val * 0.5)
+            elif action == "block_port":
+                attack_prob_val = max(0.01, attack_prob_val * 0.25)
+                stage_id = min(stage_id, 1)
+            elif action == "isolate_host":
+                attack_prob_val = 0.0
+                stage_id = 0
+
             # Inverse scale predicted state vector back to physical telemetry domain
             pred_state_orig = scaler.inverse_transform(pred_state_np_scaled)[0]
+
+            if action == "isolate_host":
+                pred_state_orig = np.zeros_like(pred_state_orig)
 
             # Construct feature dict
             state_dict = {STATE_FEATURE_KEYS[i]: float(pred_state_orig[i]) for i in range(len(STATE_FEATURE_KEYS))}
@@ -64,3 +74,4 @@ def perform_k_step_rollout(
             current_seq_scaled = np.concatenate([current_seq_scaled[:, 1:, :], next_step_scaled], axis=1)
 
     return rollout_results
+

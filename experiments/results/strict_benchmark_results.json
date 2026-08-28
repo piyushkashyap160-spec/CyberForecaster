@@ -1,0 +1,165 @@
+{
+    "Static_LR_23D": {
+        "model_type": "lr",
+        "input_size": 23,
+        "selected_threshold": 0.5,
+        "Precision": 0.9988,
+        "Recall": 0.9994,
+        "F1_Score": 0.9991,
+        "FPR": 0.4,
+        "Confusion_Matrix": {
+            "TP": 1712,
+            "FP": 2,
+            "TN": 3,
+            "FN": 1
+        },
+        "State_RMSE_Scaled": 0.0,
+        "Lead_Time": {
+            "mean_lead_time_seconds": 25.0,
+            "median_lead_time_seconds": 25.0,
+            "max_lead_time_seconds": 50.0,
+            "episodes_detected": 2,
+            "total_episodes": 2
+        },
+        "Horizon_RMSE": {},
+        "Epistemic_Uncertainty": {
+            "mean_variance": 0.0,
+            "pearson_corr": 0.0,
+            "spearman_corr": 0.0
+        }
+    },
+    "Naive_Persistence": {
+        "model_type": "persistence",
+        "input_size": 23,
+        "selected_threshold": 0.5,
+        "Precision": 1.0,
+        "Recall": 0.0012,
+        "F1_Score": 0.0023,
+        "FPR": 0.0,
+        "Confusion_Matrix": {
+            "TP": 2,
+            "FP": 0,
+            "TN": 5,
+            "FN": 1711
+        },
+        "State_RMSE_Scaled": 0.0,
+        "Lead_Time": {
+            "mean_lead_time_seconds": -92.5,
+            "median_lead_time_seconds": -92.5,
+            "max_lead_time_seconds": 50.0,
+            "episodes_detected": 2,
+            "total_episodes": 2
+        },
+        "Horizon_RMSE": {},
+        "Epistemic_Uncertainty": {
+            "mean_variance": 0.0,
+            "pearson_corr": 0.0,
+            "spearman_corr": 0.0
+        }
+    },
+    "Temporal_LSTM_23D_Flow_Only": {
+        "model_type": "lstm",
+        "input_size": 23,
+        "selected_threshold": 0.8,
+        "Precision": 0.9988,
+        "Recall": 0.9959,
+        "F1_Score": 0.9974,
+        "FPR": 0.4,
+        "Confusion_Matrix": {
+            "TP": 1706,
+            "FP": 2,
+            "TN": 3,
+            "FN": 7
+        },
+        "State_RMSE_Scaled": 1.943,
+        "Lead_Time": {
+            "mean_lead_time_seconds": 25.0,
+            "median_lead_time_seconds": 25.0,
+            "max_lead_time_seconds": 50.0,
+            "episodes_detected": 2,
+            "total_episodes": 2
+        },
+        "Horizon_RMSE": {
+            "RMSE@1": 6.1772,
+            "RMSE@2": 6.2293,
+            "RMSE@3": 6.2712,
+            "RMSE@4": 6.3123,
+            "RMSE@5": 6.3511
+        },
+        "Epistemic_Uncertainty": {
+            "mean_variance": 9.003096056403592e-05,
+            "pearson_corr": -0.0025,
+            "spearman_corr": -0.5176
+        }
+    },
+    "Temporal_LSTM_30D_Enriched": {
+        "model_type": "lstm",
+        "input_size": 30,
+        "selected_threshold": 0.2,
+        "Precision": 0.9959,
+        "Recall": 0.2802,
+        "F1_Score": 0.4374,
+        "FPR": 0.4,
+        "Confusion_Matrix": {
+            "TP": 480,
+            "FP": 2,
+            "TN": 3,
+            "FN": 1233
+        },
+        "State_RMSE_Scaled": 2.0547,
+        "Lead_Time": {
+            "mean_lead_time_seconds": -240.0,
+            "median_lead_time_seconds": -240.0,
+            "max_lead_time_seconds": 50.0,
+            "episodes_detected": 2,
+            "total_episodes": 2
+        },
+        "Horizon_RMSE": {
+            "RMSE@1": 5.6539,
+            "RMSE@2": 5.6958,
+            "RMSE@3": 5.7154,
+            "RMSE@4": 5.733,
+            "RMSE@5": 5.7437
+        },
+        "Epistemic_Uncertainty": {
+            "mean_variance": 0.004126144107431173,
+            "pearson_corr": 0.0508,
+            "spearman_corr": 0.1247
+        }
+    },
+    "Temporal_GNN_23D": {
+        "model_type": "gnn",
+        "input_size": 23,
+        "selected_threshold": 0.85,
+        "Precision": 0.9982,
+        "Recall": 0.9971,
+        "F1_Score": 0.9977,
+        "FPR": 0.6,
+        "Confusion_Matrix": {
+            "TP": 1708,
+            "FP": 3,
+            "TN": 2,
+            "FN": 5
+        },
+        "State_RMSE_Scaled": 2.0076,
+        "Lead_Time": {
+            "mean_lead_time_seconds": 25.0,
+            "median_lead_time_seconds": 25.0,
+            "max_lead_time_seconds": 50.0,
+            "episodes_detected": 2,
+            "total_episodes": 2
+        },
+        "Horizon_RMSE": {
+            "RMSE@1": 6.2078,
+            "RMSE@2": 6.3288,
+            "RMSE@3": 6.4211,
+            "RMSE@4": 6.4567,
+            "RMSE@5": 6.4872
+        },
+        "Epistemic_Uncertainty": {
+            "mean_variance": 0.0,
+            "pearson_corr": 0.0,
+            "spearman_corr": 0.0
+        }
+    }
+}

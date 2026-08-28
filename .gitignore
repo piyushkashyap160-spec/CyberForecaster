@@ -34,3 +34,16 @@ data/real/
 
 # Temporary uploaded demo files
 data/demo/uploaded_temp.pcap
+
+# Donor repos
+donors/
+
+# Node & Frontend build
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# Blockchain artifacts & cache
+blockchain/artifacts/
+blockchain/cache/
+

@@ -50,60 +50,60 @@
         }
     },
     "Model_3_Temporal_LSTM_WorldModel": {
-        "Precision": 0.9444,
+        "Precision": 0.8644,
         "Recall": 0.9444,
-        "F1_Score": 0.9444,
-        "FPR": 0.0556,
+        "F1_Score": 0.9027,
+        "FPR": 0.1481,
         "TP": 51,
-        "FP": 3,
-        "TN": 51,
+        "FP": 8,
+        "TN": 46,
         "FN": 3,
-        "NextState_MAE": 0.386446,
-        "NextState_MSE": 0.431023,
-        "NextState_RMSE": 0.656523,
+        "NextState_MAE": 0.666604,
+        "NextState_MSE": 1.059506,
+        "NextState_RMSE": 1.029323,
         "Prob_Benign_Samples": {
-            "mean": 0.0834,
-            "median": 0.0265,
-            "min": 0.0201,
-            "max": 0.9518
+            "mean": 0.1659,
+            "median": 0.0185,
+            "min": 0.0054,
+            "max": 0.9979
         },
         "Prob_Attack_Samples": {
-            "mean": 0.8946,
-            "median": 0.9504,
-            "min": 0.022,
-            "max": 0.9759
+            "mean": 0.9408,
+            "median": 0.9975,
+            "min": 0.0138,
+            "max": 0.998
         },
         "Forecast_Lead_Time": {
-            "mean_lead_time_seconds": -5.0,
-            "median_lead_time_seconds": -5.0,
-            "max_lead_time_seconds": -5.0,
+            "mean_lead_time_seconds": 16.67,
+            "median_lead_time_seconds": 5.0,
+            "max_lead_time_seconds": 50.0,
             "episodes_detected": 3,
             "total_episodes": 3
         }
     },
     "Model_4_Temporal_GNN_WorldModel": {
-        "Precision": 0.9444,
-        "Recall": 0.9444,
-        "F1_Score": 0.9444,
+        "Precision": 0.9231,
+        "Recall": 0.6667,
+        "F1_Score": 0.7742,
         "FPR": 0.0556,
-        "TP": 51,
+        "TP": 36,
         "FP": 3,
         "TN": 51,
-        "FN": 3,
-        "NextState_MAE": 0.338245,
-        "NextState_MSE": 0.402802,
-        "NextState_RMSE": 0.634667,
+        "FN": 18,
+        "NextState_MAE": 0.727259,
+        "NextState_MSE": 1.1962,
+        "NextState_RMSE": 1.093709,
         "Prob_Benign_Samples": {
-            "mean": 0.0635,
-            "median": 0.01,
-            "min": 0.0072,
-            "max": 0.9685
+            "mean": 0.0834,
+            "median": 0.0267,
+            "min": 0.0151,
+            "max": 0.9984
         },
         "Prob_Attack_Samples": {
-            "mean": 0.9077,
-            "median": 0.9629,
-            "min": 0.0092,
-            "max": 0.9787
+            "mean": 0.7021,
+            "median": 0.978,
+            "min": 0.0237,
+            "max": 0.999
         },
         "Forecast_Lead_Time": {
             "mean_lead_time_seconds": -5.0,
