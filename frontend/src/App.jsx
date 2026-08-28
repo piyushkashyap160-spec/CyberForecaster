@@ -27,12 +27,21 @@ export default function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [latestForecast, setLatestForecast] = useState({});
 
+  // Collector UI State
+  const [collectorInterfaces, setCollectorInterfaces] = useState([]);
+  const [selectedInterface, setSelectedInterface] = useState("");
+  const [collectorStatus, setCollectorStatus] = useState({ running: false, packets_captured: 0, flows_generated: 0, bytes_captured: 0 });
+  const [loadingCollector, setLoadingCollector] = useState(false);
+
   const socketRef = useRef(null);
 
   // Load initial data
   useEffect(() => {
     fetchHosts();
     fetchAlerts();
+    fetchCollectorInterfaces();
+    fetchCollectorStatus();
+
 
     // Setup Socket.io Connection
     socketRef.current = io(SOCKET_URL);
@@ -96,6 +105,66 @@ export default function App() {
       console.error("Error fetching alerts:", err);
     }
   };
+
+  // Collector API functions
+  const fetchCollectorInterfaces = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/collector/interfaces`);
+      const data = await res.json();
+      if (data.interfaces && data.interfaces.length > 0) {
+        setCollectorInterfaces(data.interfaces);
+        if (!selectedInterface) {
+          const defaultIf = typeof data.interfaces[0] === 'string' ? data.interfaces[0] : (data.interfaces[0].name || "eth0");
+          setSelectedInterface(defaultIf);
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching collector interfaces:", err);
+    }
+  };
+
+  const fetchCollectorStatus = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/collector/status`);
+      const data = await res.json();
+      setCollectorStatus(data);
+    } catch (err) {
+      console.error("Error fetching collector status:", err);
+    }
+  };
+
+  const startCollector = async () => {
+    setLoadingCollector(true);
+    try {
+      const res = await fetch(`${API_BASE}/collector/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ interface: selectedInterface })
+      });
+      if (res.ok) {
+        fetchCollectorStatus();
+      }
+    } catch (err) {
+      console.error("Error starting collector:", err);
+    } finally {
+      setLoadingCollector(false);
+    }
+  };
+
+  const stopCollector = async () => {
+    setLoadingCollector(true);
+    try {
+      const res = await fetch(`${API_BASE}/collector/stop`, { method: "POST" });
+      if (res.ok) {
+        fetchCollectorStatus();
+      }
+    } catch (err) {
+      console.error("Error stopping collector:", err);
+    } finally {
+      setLoadingCollector(false);
+    }
+  };
+
 
   // Load rollout simulation for selected host
   useEffect(() => {
@@ -233,7 +302,8 @@ export default function App() {
         {[
           { title: "Total Monitored Hosts", value: hosts.length, icon: Server, color: "text-cyber-accent", border: "border-cyan-950/40" },
           { title: "Active High-Threat Alerts", value: alerts.filter(a => a.severity === "HIGH" || a.severity === "CRITICAL").length, icon: ShieldAlert, color: "text-cyber-danger", border: "border-rose-950/40" },
-          { title: "Average Prediction Accuracy", value: "98.4%", icon: Activity, color: "text-indigo-400", border: "border-indigo-950/40" },
+          { title: "Live Traffic Events", value: trafficEvents.length, icon: Activity, color: "text-indigo-400", border: "border-indigo-950/40" },
+
           { title: "On-Chain Predictions Logged", value: alerts.filter(a => a.blockchainTxHash).length, icon: Database, color: "text-emerald-400", border: "border-emerald-950/40" }
         ].map((item, idx) => (
           <div key={idx} className={`glass-card p-4 rounded-xl flex items-center justify-between border ${item.border} shadow-lg`}>
@@ -259,8 +329,9 @@ export default function App() {
                 <Layers className="h-4 w-4 text-cyber-accent" />
                 <h3 className="font-extrabold uppercase text-sm tracking-wider font-mono-tech">Local Subnet Topology Map</h3>
               </div>
-              <span className="text-[10px] text-slate-500 font-mono-tech uppercase">192.168.1.0/24 subnet</span>
+              <span className="text-[10px] text-slate-500 font-mono-tech uppercase">Configured Demo Subnet (192.168.1.0/24)</span>
             </div>
+
 
             {/* Topology SVG Canvas */}
             <div className="flex-1 relative flex items-center justify-center bg-slate-950/30 rounded-xl border border-slate-900 overflow-hidden">
@@ -361,6 +432,74 @@ export default function App() {
             </div>
           </div>
 
+          {/* Live Network Capture Control Panel */}
+
+          <div className="glass-card p-5 rounded-2xl border border-slate-800/50 shadow-xl">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3 mb-3">
+              <div className="flex items-center gap-2">
+                <HardDrive className="h-4 w-4 text-cyber-accent" />
+                <h3 className="font-extrabold uppercase text-sm tracking-wider font-mono-tech">Live Network Packet Collector</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`text-[10px] font-mono-tech px-2 py-0.5 rounded border ${collectorStatus.running ? "bg-emerald-950/60 border-emerald-800 text-emerald-400" : "bg-slate-900 border-slate-800 text-slate-400"}`}>
+                  {collectorStatus.running ? "CAPTURING LIVE" : "COLLECTOR IDLE"}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-12 gap-3 items-center text-xs font-mono-tech">
+              <div className="col-span-4 flex items-center gap-2">
+                <select
+                  value={selectedInterface}
+                  onChange={(e) => setSelectedInterface(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-cyan-500 text-xs"
+                >
+                  {collectorInterfaces.length === 0 ? (
+                    <option value="eth0">eth0 (Default)</option>
+                  ) : (
+                    collectorInterfaces.map((iface, idx) => {
+                      const val = typeof iface === 'string' ? iface : (iface.name || `iface-${idx}`);
+                      const desc = typeof iface === 'string' ? iface : (iface.description || iface.name);
+                      return <option key={idx} value={val}>{desc}</option>;
+                    })
+                  )}
+                </select>
+                <button
+                  onClick={fetchCollectorInterfaces}
+                  title="Refresh Interfaces"
+                  className="p-1.5 rounded bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-400"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                </button>
+              </div>
+
+              <div className="col-span-4 flex gap-2">
+                {!collectorStatus.running ? (
+                  <button
+                    onClick={startCollector}
+                    disabled={loadingCollector}
+                    className="w-full py-1.5 px-3 rounded bg-emerald-600/20 border border-emerald-800 hover:bg-emerald-600/30 text-emerald-400 font-bold transition-colors disabled:opacity-40"
+                  >
+                    {loadingCollector ? "STARTING..." : "START CAPTURE"}
+                  </button>
+                ) : (
+                  <button
+                    onClick={stopCollector}
+                    disabled={loadingCollector}
+                    className="w-full py-1.5 px-3 rounded bg-rose-600/20 border border-rose-800 hover:bg-rose-600/30 text-rose-400 font-bold transition-colors disabled:opacity-40"
+                  >
+                    {loadingCollector ? "STOPPING..." : "STOP CAPTURE"}
+                  </button>
+                )}
+              </div>
+
+              <div className="col-span-4 flex justify-end gap-3 text-[10px] text-slate-400">
+                <div>Pkts: <span className="text-white font-bold">{collectorStatus.packets_captured || 0}</span></div>
+                <div>Flows: <span className="text-cyber-accent font-bold">{collectorStatus.flows_generated || 0}</span></div>
+              </div>
+            </div>
+          </div>
+
           {/* Live Packet Streaming */}
           <div className="glass-card p-6 rounded-2xl border border-slate-800/50 shadow-xl flex-1 flex flex-col max-h-[350px]">
             <div className="flex justify-between items-center border-b border-slate-800 pb-3 mb-4">
@@ -370,6 +509,7 @@ export default function App() {
               </div>
               <span className="text-[9px] text-indigo-400 uppercase tracking-widest font-mono-tech animate-pulse">Streaming Events</span>
             </div>
+
 
             <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-2 font-mono-tech text-[10px]">
               {trafficEvents.length === 0 ? (

@@ -12,5 +12,11 @@ PyYAML>=6.0
 shap>=0.42.0
 joblib>=1.3.0
 pytest>=7.4.0
-
 networkx>=3.0
+
+# Backend & Web3 API Dependencies
+fastapi>=0.100.0
+uvicorn>=0.22.0
+python-socketio>=5.8.0
+pydantic>=2.0.0
+web3>=6.0.0
