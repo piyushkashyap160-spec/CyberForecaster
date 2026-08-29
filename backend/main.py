@@ -55,7 +55,12 @@ fastapi_app.add_middleware(
     allow_headers=["*"],
 )
 
-# Combined ASGI app (Socket.io + FastAPI)
+# Mount Socket.io ASGI sub-app directly on fastapi_app at /socket.io
+# to guarantee Socket.IO works when running `uvicorn backend.main:fastapi_app`
+sio_subapp = socketio.ASGIApp(sio, socketio_path="")
+fastapi_app.mount("/socket.io", sio_subapp)
+
+# Combined ASGI app for standard `uvicorn backend.main:app` execution
 app = socketio.ASGIApp(sio, other_asgi_app=fastapi_app)
 
 # Global state & cached models
@@ -244,8 +249,9 @@ def seed_hosts_and_history():
 
 async def live_collector_event_pump():
     """
-    Background worker that continuously pulls completed flows from the Live Collector
-    and emits real-time 'traffic_update' and 'collector_status' Socket.IO events.
+    Background worker that continuously pulls completed flows from the Live Collector,
+    constructs the 23-D network state vector, updates the host's temporal context window,
+    runs the Temporal LSTM World Model forecast, and emits real-time Socket.IO events.
     """
     logger.info("Live Collector Socket.IO event pump task started.")
     last_status_emit = 0.0
@@ -267,25 +273,141 @@ async def live_collector_event_pump():
                 proto_code = 1.0 if proto_str == "TCP" else (0.5 if proto_str == "UDP" else 0.0)
                 dur = float(flow.get("duration", 0.001))
                 bytes_cnt = int(flow.get("byte_count", 64))
+                src_ip = str(flow.get("src_ip", "192.168.1.10"))
+                dst_ip = str(flow.get("dst_ip", "10.0.0.1"))
 
                 event = {
                     "timestamp": flow.get("capture_timestamp", datetime.now(timezone.utc).isoformat()),
-                    "hostIp": str(flow.get("src_ip", "192.168.1.10")),
-                    "dstIp": str(flow.get("dst_ip", "10.0.0.1")),
+                    "hostIp": src_ip,
+                    "dstIp": dst_ip,
                     "duration": dur,
                     "total_bytes": bytes_cnt,
                     "port_danger": 0.0,
-                    "protocol": proto_code,
+                    "protocol": proto_str,
+                    "protocol_code": proto_code,
                     "action": 0
                 }
                 TRAFFIC_EVENTS_DB.append(event)
                 if len(TRAFFIC_EVENTS_DB) > 500:
                     TRAFFIC_EVENTS_DB.pop(0)
 
-                print(f"[TRAFFIC_UPDATE] host={event['hostIp']} dst={event['dstIp']} bytes={event['total_bytes']} dur={event['duration']} proto={event['protocol']}", flush=True)
                 await sio.emit("traffic_update", event)
                 await sio.emit("collector_status", LIVE_COLLECTOR.get_status())
                 last_status_emit = time.time()
+
+                # --- Live ML Feature Extraction & World Model Forecast ---
+                try:
+                    df_flow = convert_flows_to_cyberforecaster_dataframe([flow])
+                    state_rec = encode_window_to_state(df_flow, window_seconds=5.0)
+                    live_vector_23d = state_rec['vector_flow_only']
+
+                    target_ip = src_ip if src_ip in HOSTS_DB else ("192.168.1.10" if "192.168.1.10" in HOSTS_DB else list(HOSTS_DB.keys())[0])
+                    if target_ip not in HOST_TRAFFIC_HISTORY:
+                        HOST_TRAFFIC_HISTORY[target_ip] = []
+
+                    HOST_TRAFFIC_HISTORY[target_ip].append(live_vector_23d)
+                    if len(HOST_TRAFFIC_HISTORY[target_ip]) > 10:
+                        HOST_TRAFFIC_HISTORY[target_ip] = HOST_TRAFFIC_HISTORY[target_ip][-10:]
+
+                    win_count = len(HOST_TRAFFIC_HISTORY[target_ip])
+                    is_ready = (win_count >= 10) and (MODEL_LSTM is not None) and (SCALER is not None)
+
+                    if is_ready:
+                        seq = np.array(HOST_TRAFFIC_HISTORY[target_ip][-10:])  # (10, 23)
+                        seq_scaled = SCALER.transform(seq[np.newaxis, :, :])  # (1, 10, 23)
+                        seq_tensor = torch.tensor(seq_scaled, dtype=torch.float32).to(DEVICE)
+
+                        with torch.no_grad():
+                            pred_state_scaled, attack_prob, stage_logits = MODEL_LSTM(seq_tensor)
+
+                        prob = float(attack_prob.cpu().numpy()[0, 0])
+                        stage_id = int(torch.argmax(stage_logits, dim=1).cpu().numpy()[0])
+                        stage_name = map_stage_id_to_name(stage_id)
+                        mitre_techs = get_mitre_techniques(stage_name)
+
+                        raw_rollout = perform_k_step_rollout(MODEL_LSTM, SCALER, seq, k_steps=5, device=DEVICE)
+                        rollout_sanitized = []
+                        for step_item in raw_rollout:
+                            rollout_sanitized.append({
+                                "horizon_step": str(step_item.get("horizon_step")),
+                                "step_index": int(step_item.get("step_index")),
+                                "attack_probability": float(step_item.get("attack_probability")),
+                                "predicted_stage_id": int(step_item.get("predicted_stage_id")),
+                                "state_dict": {k: float(v) for k, v in step_item.get("state_dict", {}).items()}
+                            })
+
+                        forecast_payload = {
+                            "hostIp": target_ip,
+                            "threatLevel": prob,
+                            "predictedStage": stage_name,
+                            "confidence": round(1.0 - prob if stage_name == "Normal" else prob, 4),
+                            "uncertainty": "Uncertainty unavailable",
+                            "mitreTechniques": mitre_techs,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "warmupStatus": {
+                                "windowsCollected": win_count,
+                                "windowsRequired": 10,
+                                "isReady": True,
+                                "status": "READY"
+                            },
+                            "rollout": rollout_sanitized,
+                            "current_state_vector": [float(x) for x in live_vector_23d]
+                        }
+
+                        if target_ip in HOSTS_DB:
+                            HOSTS_DB[target_ip]["threatLevel"] = prob
+                            HOSTS_DB[target_ip]["predictedStage"] = stage_name
+                            HOSTS_DB[target_ip]["lastSeen"] = datetime.now(timezone.utc).isoformat()
+
+                        await sio.emit("forecast_update", forecast_payload)
+
+                        # Check genuine threat alert condition (only on real non-benign predictions)
+                        if prob >= 0.50 and stage_name != "Normal":
+                            alert_id = str(uuid.uuid4())
+                            severity = "CRITICAL" if prob >= 0.85 else ("HIGH" if prob >= 0.70 else "MEDIUM")
+                            data_hash = hashlib.sha256(f"{target_ip}-{stage_name}-{prob:.4f}".encode()).hexdigest()
+                            tx_hash = log_forecast_on_chain(alert_id, target_ip, stage_name, data_hash)
+
+                            alert_entry = {
+                                "_id": alert_id,
+                                "hostIp": target_ip,
+                                "severity": severity,
+                                "predictedStage": stage_name,
+                                "confidence": round(prob, 4),
+                                "uncertainty": "Uncertainty unavailable",
+                                "mitreTechniques": mitre_techs,
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                                "blockchainTxHash": tx_hash,
+                                "dataHash": data_hash,
+                                "actionTaken": "PENDING_REVIEW"
+                            }
+                            ALERTS_DB.append(alert_entry)
+                            if len(ALERTS_DB) > 100:
+                                ALERTS_DB.pop(0)
+                            await sio.emit("forecast_alert", alert_entry)
+                    else:
+                        # Emitting warm-up state update
+                        warmup_payload = {
+                            "hostIp": target_ip,
+                            "threatLevel": 0.0,
+                            "predictedStage": "Normal",
+                            "confidence": 0.0,
+                            "uncertainty": "Uncertainty unavailable",
+                            "mitreTechniques": [],
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "warmupStatus": {
+                                "windowsCollected": win_count,
+                                "windowsRequired": 10,
+                                "isReady": False,
+                                "status": "WARMING UP"
+                            },
+                            "rollout": [],
+                            "current_state_vector": [float(x) for x in live_vector_23d]
+                        }
+                        await sio.emit("forecast_update", warmup_payload)
+
+                except Exception as ml_err:
+                    logger.error(f"Error during live ML feature/forecast processing: {ml_err}")
 
         except Exception as e:
             logger.error(f"Error in live collector event pump: {e}")
@@ -423,6 +545,44 @@ async def get_hosts():
 @fastapi_app.get("/api/alerts")
 async def get_alerts():
     return list(reversed(ALERTS_DB[-100:]))
+
+
+@fastapi_app.get("/api/world_model/status")
+async def get_world_model_status():
+    default_ip = "192.168.1.10"
+    win_count = len(HOST_TRAFFIC_HISTORY.get(default_ip, []))
+    is_ready = win_count >= 10 and (MODEL_LSTM is not None) and (SCALER is not None)
+
+    return {
+        "model": "Temporal LSTM World Model",
+        "input_dimension": 23,
+        "status": "READY" if is_ready else "WARMING UP",
+        "checkpoint": CONFIG.get("model", {}).get("weights_path", "models_weights/lstm_world_model.pt"),
+        "scaler": CONFIG.get("model", {}).get("scaler_path", "models_weights/scaler.joblib"),
+        "scaler_mode": "TRAIN-FITTED",
+        "windows_collected": win_count,
+        "windows_required": 10,
+        "forecast_horizon_seconds": 25,
+        "forecast_steps": 5,
+        "uncertainty_status": "Uncertainty unavailable",
+        "canonical_rmse_reference": {
+            "K_step_1": {
+                "persistence_rmse": 11.7373,
+                "training_mean_rmse": 2.1498,
+                "lstm_rmse": 2.0549
+            }
+        }
+    }
+
+
+@fastapi_app.get("/api/benchmark/canonical")
+async def get_canonical_benchmark():
+    canonical_path = os.path.join(os.path.dirname(__file__), "..", "experiments", "results", "canonical_benchmark_results.json")
+    if os.path.exists(canonical_path):
+        with open(canonical_path, "r") as f:
+            data = json.load(f)
+        return data
+    return {"error": "Canonical benchmark results not found"}
 
 
 @fastapi_app.get("/api/collector/interfaces")
