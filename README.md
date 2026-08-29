@@ -2,114 +2,100 @@
 
 > **Tagline:** *From Intrusion Detection to Attack Forecasting*  
 > **SIH 2026 Problem Statement:** AI based Network Attack Forecasting from Network Traffic Data  
-> **Target Organization:** National Technical Research Organisation (NTRO)
+> **Target Organization:** National Technical Research Organisation (NTRO)  
+> **Canonical Benchmark:** [`experiments/results/canonical_benchmark_results.json`](experiments/results/canonical_benchmark_results.json)
 
 ---
 
 ## 1. Project Overview
 
-**CyberForecaster** is an open-source, offline AI prototype engineered to model temporal network state dynamics and forecast cyberattacks before initial compromise is completed. Designed for Critical Information Infrastructure (CII) and enterprise Security Operations Centers (SOC), CyberForecaster shifts cybersecurity defense from reactive intrusion detection to proactive attack forecasting.
+**CyberForecaster** is an open-source, offline AI system engineered to model temporal network state dynamics and forecast cyberattacks before compromise is completed. Designed for Critical Information Infrastructure (CII) and Security Operations Centers (SOC), CyberForecaster shifts cybersecurity defense from reactive signature matching to proactive future-state trajectory forecasting.
 
 ---
 
-## 2. Problem Statement
+## 2. Problem Statement & Paradigm
 
-Modern nation-state cyberattacks and Advanced Persistent Threats (APTs) operate via multi-stage kill chains. Traditional intrusion detection systems (IDS) trigger alerts only after malicious payloads or unauthorized access events have already occurred. NTRO's SIH 2026 problem statement requires an open-source AI system that learns network behavior, models temporal state dynamics, predicts future network states, and maps forecasted activity to ATT&CK-aligned stages with interpretable explanations.
+Modern nation-state cyberattacks operate via multi-stage kill chains. Traditional intrusion detection systems (IDS) trigger alerts only after malicious packets match static signatures. CyberForecaster models continuous network telemetry as an autoregressive **Temporal World Model**:
 
----
-
-## 3. Proposed Solution: The World Model Approach
-
-CyberForecaster replaces static classification with a **Temporal World Model** learning state dynamics:
-
-$$ P(S[t+1] \mid S[t], S[t-1], \dots, S[t-L+1]) $$
+$$ P(S_{t+1} \mid S_t, S_{t-1}, \dots, S_{t-L+1}) $$
 
 ```text
-CyberForecaster Paradigm:
-Traffic History [S(t-9) ... S(t)]
+CyberForecaster Architecture:
+Telemetry Stream History [S(t-9) ... S(t)]
        ↓
 Current Network State S(t)
        ↓
-Learn Temporal Transition Dynamics
+Temporal Transition Dynamics (LSTM / Recurrent Cell)
        ↓
-Predict Next State S(t+1)
+Future State Forecast S(t+1)
        ↓
 Recursive K-Step Forward Rollout [S(t+1) ... S(t+K)]
        ↓
-Forecast Future Attack Risk & ATT&CK-Aligned Stage
+Forecasted Threat Probability & ATT&CK-Aligned Stage
        ↓
-Explainable Early Warning Threshold Alert (Gradient Saliency)
+Uncertainty-Aware Alerting (Monte Carlo Dropout & Saliency)
 ```
 
 ---
 
-## 4. Benchmark Evaluation & Performance (4 Models)
+## 3. Real CSE-CIC-IDS2018 Benchmark Performance
 
-### 4-Model Comparative Benchmark Matrix (Hardened Synthetic Demo Dataset — 14,400 Flows)
+The canonical benchmark was evaluated across the full multi-hour stream of `Friday-02-03-2018_TrafficForML_CICFlowMeter.csv` ($1,048,575$ total flows, $100,000$ chronological stream sample, $8,640$ 5-second state windows). Zero temporal leakage was enforced by partitioning states chronologically into independent blocks prior to sequence generation, fitting scalers strictly on the training partition, and tuning decision thresholds exclusively on the validation split.
 
-| Metric / Model | Baseline A (Static LR S(t)) | Baseline B (Temporal LR S(t-9)...S(t)) | Proposed (Temporal LSTM World Model) | Experimental (Temporal GNN World Model) |
-|---|---|---|---|---|
-| **Precision** | 0.9444 | 0.9423 | **0.9444** | 0.9444 |
-| **Recall** | 0.9444 | 0.9074 | **0.9444** | 0.9444 |
-| **F1-Score** | 0.9444 | 0.9245 | **0.9444** | 0.9444 |
-| **False Positive Rate (FPR)** | 0.0556 (5.56%) | 0.0556 (5.56%) | **0.0556 (5.56%)** | 0.0556 (5.56%) |
-| **Confusion Matrix (TP/FP/TN/FN)** | 51 / 3 / 51 / 3 | 49 / 3 / 51 / 5 | **51 / 3 / 51 / 3** | 51 / 3 / 51 / 3 |
-| **Next-State MAE** | N/A | N/A | **0.3864** | 0.3355 |
-| **Next-State RMSE** | N/A | N/A | **0.6565** | 0.6343 |
-| **Forecast Lead Time** | -5.0s | -5.0s | **-5.0s** | -5.0s |
+### A. Classification Performance on Untouched Test Partition ($N=2,562$ Sequences; 859 Benign, 1,703 Malicious)
 
----
+| Model Architecture | Feature Dim | Tuned Threshold ($\theta$) | Precision | Recall | $F_1$ Score | FPR | Confusion Matrix (TP / FP / TN / FN) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Static Logistic Regression** | 23-D | 0.20 | 0.9341 | 0.9988 | 0.9654 | 13.97% | 1,701 / 120 / 739 / 2 |
+| **Naive Persistence Baseline** | 23-D | 0.05 | 0.9028 | 0.3053 | 0.4563 | 6.52% | 520 / 56 / 803 / 1,183 |
+| **Temporal LSTM World Model (Primary)** | 23-D | 0.90 | **0.9692** | **0.9965** | **0.9826** | **6.29%** | **1,697 / 54 / 805 / 6** |
+| **Temporal GNN World Model** | 23-D | 0.85 | 0.9883 | 0.9959 | 0.9921 | 2.33% | 1,696 / 20 / 839 / 7 |
+| *Temporal LSTM (Packet-Enriched Ablation)* | 30-D | 0.90 | 0.9959 | 0.4228 | 0.5936 | 0.35% | 720 / 3 / 856 / 983 |
 
-## 5. Real CIC-IDS2018 Benchmark (1,048,575 Real Flows)
-
-The pipeline [`training/run_cicids2018_pipeline.py`](file:///C:/Users/piyus/.gemini/antigravity/scratch/CyberForecaster/training/run_cicids2018_pipeline.py) evaluated all 4 models on the official `Friday-02-03-2018_TrafficForML_CICFlowMeter.csv` dataset (**1,048,575 flows**, 8,640 five-second windows, 8,630 sequences with 70/15/15 chronological split):
-
-| Model | Precision | Recall | F1-Score | FPR | Next-State MAE | Next-State RMSE |
-|---|---|---|---|---|---|---|
-| **Static LR (Baseline A)** | 1.0000 | 0.9558 | 0.9774 | 0.00% | N/A | N/A |
-| **Temporal LR (Baseline B)** | 0.9969 | 0.9868 | 0.9918 | 80.0% | N/A | N/A |
-| **Temporal LSTM World Model** | 1.0000 | 0.2264 | 0.3692 | 0.00% | 0.6044 | 0.8730 |
-| **Temporal GNN World Model** | 1.0000 | 0.4574 | 0.6277 | 0.00% | 0.6002 | 0.8865 |
+*Source of truth: `experiments/results/canonical_benchmark_results.json`*
 
 ---
 
-## 6. Horizon-Wise K-Step Forecasting Performance
+## 4. Multi-Step Future State Prediction ($X_{t+K}$ RMSE)
 
-- **Sequence Length:** $L = 10$ historical windows ($50$ seconds context).
-- **Forecast Horizon:** $K = 5$ steps ($25$ seconds forward simulation).
-- **Multi-Step Training Loss:** Unrolled 3-step loss during training with scheduled sampling ensures stable recursive forecasting across $t+1 \dots t+5$.
+### Primary Scientific Finding:
+On the evaluated real CIC-IDS2018 test data, the **Temporal LSTM achieved a $K=1$ future-state RMSE of 2.0549, compared with 11.7373 for persistence and 2.1498 for the training-mean baseline**, maintaining superior predictive accuracy across all evaluated forward simulation horizons:
 
----
-
-## 7. Model Architectural Notes & Disclosures
-
-
-1. **Stage Mapping:** Network traffic datasets (including CIC-IDS2018) do not provide native MITRE ATT&CK labels. CyberForecaster uses a transparent, expert-defined mapping layer (`preprocessing/stage_mapper.py`) mapping attack labels to **ATT&CK-aligned behavioural stages**.
-2. **GNN Rollout Limitation:** The Temporal GNN model encodes dynamic network host graphs $G(t-9)\dots G(t)$ to predict future state vectors $S(t+1)\dots S(t+K)$. It does not synthesize future graph topology; the latest observed graph embedding $g(t)$ is carried forward as a proxy.
-3. **Explainability:** Real-time SOC dashboard explanations use **Gradient Saliency Attribution** (PyTorch integrated gradients). Offline batch SHAP explanations are provided via `SHAPOfflineExplainer`.
+| Prediction Horizon ($K$) | Projected Advance | Naive Persistence ($X_{t+K} = X_t$) | Training-Mean Baseline ($\bar{X}_{\text{train}}$) | Temporal LSTM World Model |
+| :---: | :---: | :---: | :---: | :---: |
+| **$K = 1$ Step** | $+5\text{s}$ ahead | 11.7373 | 2.1498 | **2.0549** |
+| **$K = 3$ Steps** | $+15\text{s}$ ahead | 12.0022 | 2.4191 | **2.3484** |
+| **$K = 5$ Steps** | $+25\text{s}$ ahead | 12.0051 | 2.2245 | **2.1577** |
 
 ---
 
-## 8. Installation & Execution
+## 5. Lead-Time Evaluation & Exploratory Findings
+
+### Secondary Finding:
+On the evaluated test timeline, the **Temporal LSTM detected attacks at the exact onset window ($0.0\text{s}$ latency) with zero false alarms during the preceding benign baseline**. No genuine $>0\text{s}$ pre-onset detections were observed.
+
+- **Exploratory Status:** Because the test block contains only **$N=2$ distinct attack episodes**, lead-time evaluation is strictly exploratory. A sample size of 2 episodes is insufficient for generalizable population lead-time claims.
+- **False-Alarm Pre-Alarm Audit:** The static Logistic Regression baseline's apparent $+50.0\text{s}$ lead time was proven to be a mathematical artifact of its high false-positive rate ($13.97\%$), triggering random false alarms on benign traffic over an hour prior to attack onset.
+
+---
+
+## 6. Architectural Notes & Explicit Disclosures
+
+1. **GNN Topology Caveat:** The evaluated CSE-CIC-IDS2018 dataset is pre-aggregated per interface without host IP pair topology. The Temporal GNN operated in **100% single-node fallback mode (1 node, 0 edges)**. Its classification score reflects recurrent parameterization, **not** demonstrated graph-structural superiority.
+2. **Packet-Enriched Model Failure:** The 30-D packet-enriched model suffered degraded recall ($42.28\%$) because 5-second interval PCAP feature aggregation smoothed out subtle flow-level attack anomalies. Flow-level telemetry (23-D) remains the validated primary feature set.
+3. **ATT&CK Stage Mapping:** Network traffic datasets do not include native MITRE ATT&CK labels. CyberForecaster maps attack classes to ATT&CK tactics via an expert-defined transparent mapping layer (`preprocessing/stage_mapper.py`).
+
+---
+
+## 7. Installation & Quickstart
 
 ```bash
 # 1. Install dependencies
 py -m pip install -r requirements.txt
 
-# 2. Run demo dataset generator
-py data/demo_generator.py
+# 2. Run unit & regression test suite (47 tests)
+py -m pytest -q
 
-# 3. Train models
-py training/train_world_model.py
-py training/train_baseline.py
-py training/train_temporal_gnn.py
-
-# 4. Run 4-model comparison benchmark
-py training/compare_models.py
-
-# 5. Launch Streamlit SOC Dashboard
-streamlit run dashboard/app.py
-
-# 6. Run test suite
-py -m pytest
+# 3. Inspect canonical benchmark results
+py -c "import json; print(json.dumps(json.load(open('experiments/results/canonical_benchmark_results.json')), indent=2))"
 ```

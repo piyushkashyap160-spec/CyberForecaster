@@ -1,0 +1,180 @@
+{
+    "Static_LR_23D": {
+        "model_type": "lr",
+        "input_size": 23,
+        "selected_threshold": 0.2,
+        "Precision": 0.9341,
+        "Recall": 0.9988,
+        "F1_Score": 0.9654,
+        "FPR": 0.1397,
+        "Confusion_Matrix": {
+            "TP": 1701,
+            "FP": 120,
+            "TN": 739,
+            "FN": 2
+        },
+        "Total_Samples": 2562,
+        "Benign_Samples": 859,
+        "Malicious_Samples": 1703,
+        "State_RMSE_Scaled": 0.0,
+        "Lead_Time": {
+            "mean_lead_time_seconds": 50.0,
+            "median_lead_time_seconds": 50.0,
+            "max_lead_time_seconds": 50.0,
+            "episodes_detected": 2,
+            "total_episodes": 2
+        },
+        "Horizon_RMSE": {},
+        "Epistemic_Uncertainty": {
+            "mean_variance": 0.0,
+            "pearson_corr": 0.0,
+            "spearman_corr": 0.0
+        }
+    },
+    "Naive_Persistence": {
+        "model_type": "persistence",
+        "input_size": 23,
+        "selected_threshold": 0.05,
+        "Precision": 0.9028,
+        "Recall": 0.3053,
+        "F1_Score": 0.4563,
+        "FPR": 0.0652,
+        "Confusion_Matrix": {
+            "TP": 520,
+            "FP": 56,
+            "TN": 803,
+            "FN": 1183
+        },
+        "Total_Samples": 2562,
+        "Benign_Samples": 859,
+        "Malicious_Samples": 1703,
+        "State_RMSE_Scaled": 0.0,
+        "Lead_Time": {
+            "mean_lead_time_seconds": 32.5,
+            "median_lead_time_seconds": 32.5,
+            "max_lead_time_seconds": 50.0,
+            "episodes_detected": 2,
+            "total_episodes": 2
+        },
+        "Horizon_RMSE": {},
+        "Epistemic_Uncertainty": {
+            "mean_variance": 0.0,
+            "pearson_corr": 0.0,
+            "spearman_corr": 0.0
+        }
+    },
+    "Temporal_LSTM_23D_Flow_Only": {
+        "model_type": "lstm",
+        "input_size": 23,
+        "selected_threshold": 0.9,
+        "Precision": 0.9692,
+        "Recall": 0.9965,
+        "F1_Score": 0.9826,
+        "FPR": 0.0629,
+        "Confusion_Matrix": {
+            "TP": 1697,
+            "FP": 54,
+            "TN": 805,
+            "FN": 6
+        },
+        "Total_Samples": 2562,
+        "Benign_Samples": 859,
+        "Malicious_Samples": 1703,
+        "State_RMSE_Scaled": 4.0929,
+        "Lead_Time": {
+            "mean_lead_time_seconds": 25.0,
+            "median_lead_time_seconds": 25.0,
+            "max_lead_time_seconds": 50.0,
+            "episodes_detected": 2,
+            "total_episodes": 2
+        },
+        "Horizon_RMSE": {
+            "RMSE@1": 1.833,
+            "RMSE@2": 1.8342,
+            "RMSE@3": 1.8347,
+            "RMSE@4": 1.8357,
+            "RMSE@5": 1.8362
+        },
+        "Epistemic_Uncertainty": {
+            "mean_variance": 0.00019909914408344775,
+            "pearson_corr": 0.1109,
+            "spearman_corr": 0.4515
+        }
+    },
+    "Temporal_LSTM_30D_Enriched": {
+        "model_type": "lstm",
+        "input_size": 30,
+        "selected_threshold": 0.9,
+        "Precision": 0.995,
+        "Recall": 0.2325,
+        "F1_Score": 0.377,
+        "FPR": 0.0023,
+        "Confusion_Matrix": {
+            "TP": 396,
+            "FP": 2,
+            "TN": 857,
+            "FN": 1307
+        },
+        "Total_Samples": 2562,
+        "Benign_Samples": 859,
+        "Malicious_Samples": 1703,
+        "State_RMSE_Scaled": 3.6469,
+        "Lead_Time": {
+            "mean_lead_time_seconds": -247.5,
+            "median_lead_time_seconds": -247.5,
+            "max_lead_time_seconds": 35.0,
+            "episodes_detected": 2,
+            "total_episodes": 2
+        },
+        "Horizon_RMSE": {
+            "RMSE@1": 1.7821,
+            "RMSE@2": 1.7803,
+            "RMSE@3": 1.7719,
+            "RMSE@4": 1.7797,
+            "RMSE@5": 1.7762
+        },
+        "Epistemic_Uncertainty": {
+            "mean_variance": 0.0006380551494657993,
+            "pearson_corr": 0.0163,
+            "spearman_corr": 0.448
+        }
+    },
+    "Temporal_GNN_23D": {
+        "model_type": "gnn",
+        "input_size": 23,
+        "selected_threshold": 0.05,
+        "Precision": 0.9883,
+        "Recall": 0.9959,
+        "F1_Score": 0.9921,
+        "FPR": 0.0233,
+        "Confusion_Matrix": {
+            "TP": 1696,
+            "FP": 20,
+            "TN": 839,
+            "FN": 7
+        },
+        "Total_Samples": 2562,
+        "Benign_Samples": 859,
+        "Malicious_Samples": 1703,
+        "State_RMSE_Scaled": 4.0911,
+        "Lead_Time": {
+            "mean_lead_time_seconds": 25.0,
+            "median_lead_time_seconds": 25.0,
+            "max_lead_time_seconds": 50.0,
+            "episodes_detected": 2,
+            "total_episodes": 2
+        },
+        "Horizon_RMSE": {
+            "RMSE@1": 1.8265,
+            "RMSE@2": 1.8294,
+            "RMSE@3": 1.8395,
+            "RMSE@4": 1.8425,
+            "RMSE@5": 1.8434
+        },
+        "Epistemic_Uncertainty": {
+            "mean_variance": 0.0,
+            "pearson_corr": 0.0,
+            "spearman_corr": 0.0
+        }
+    }
+}

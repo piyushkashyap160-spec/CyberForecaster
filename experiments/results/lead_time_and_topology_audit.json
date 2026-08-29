@@ -1,0 +1,308 @@
+{
+  "per_model_episode_audit": {
+    "Static_LR_23D": {
+      "threshold": 0.2,
+      "raw_lead_time": {
+        "mean_lead_time_seconds": 50.0,
+        "median_lead_time_seconds": 50.0,
+        "max_lead_time_seconds": 50.0,
+        "episodes_detected": 2,
+        "total_episodes": 2
+      },
+      "episodes": [
+        {
+          "episode_id": 0,
+          "onset_idx": 854,
+          "onset_timestamp": "2018-03-02 10:36:50",
+          "trigger_idx": 844,
+          "trigger_timestamp": "2018-03-02 09:23:10",
+          "threshold": 0.2,
+          "trigger_prob": 0.8744980692863464,
+          "raw_lead_sec": 50.0,
+          "classification": "B. FALSE-POSITIVE PRE-ALARM",
+          "is_trigger_fp": true
+        },
+        {
+          "episode_id": 1,
+          "onset_idx": 2005,
+          "onset_timestamp": "2018-03-02 12:13:35",
+          "trigger_idx": 1995,
+          "trigger_timestamp": "2018-03-02 12:12:45",
+          "threshold": 0.2,
+          "trigger_prob": 1.0,
+          "raw_lead_sec": 50.0,
+          "classification": "A. TRUE EARLY WARNING",
+          "is_trigger_fp": false
+        }
+      ],
+      "validated_lead_times": [
+        50.0
+      ],
+      "validated_mean_lead_time": 50.0
+    },
+    "Naive_Persistence": {
+      "threshold": 0.05,
+      "raw_lead_time": {
+        "mean_lead_time_seconds": 32.5,
+        "median_lead_time_seconds": 32.5,
+        "max_lead_time_seconds": 50.0,
+        "episodes_detected": 2,
+        "total_episodes": 2
+      },
+      "episodes": [
+        {
+          "episode_id": 0,
+          "onset_idx": 854,
+          "onset_timestamp": "2018-03-02 10:36:50",
+          "trigger_idx": 851,
+          "trigger_timestamp": "2018-03-02 09:23:45",
+          "threshold": 0.05,
+          "trigger_prob": 0.5110878944396973,
+          "raw_lead_sec": 15.0,
+          "classification": "B. FALSE-POSITIVE PRE-ALARM",
+          "is_trigger_fp": true
+        },
+        {
+          "episode_id": 1,
+          "onset_idx": 2005,
+          "onset_timestamp": "2018-03-02 12:13:35",
+          "trigger_idx": 1995,
+          "trigger_timestamp": "2018-03-02 12:12:45",
+          "threshold": 0.05,
+          "trigger_prob": 0.7751108407974243,
+          "raw_lead_sec": 50.0,
+          "classification": "A. TRUE EARLY WARNING",
+          "is_trigger_fp": false
+        }
+      ],
+      "validated_lead_times": [
+        50.0
+      ],
+      "validated_mean_lead_time": 50.0
+    },
+    "Temporal_LSTM_23D": {
+      "threshold": 0.9,
+      "raw_lead_time": {
+        "mean_lead_time_seconds": 25.0,
+        "median_lead_time_seconds": 25.0,
+        "max_lead_time_seconds": 50.0,
+        "episodes_detected": 2,
+        "total_episodes": 2
+      },
+      "episodes": [
+        {
+          "episode_id": 0,
+          "onset_idx": 854,
+          "onset_timestamp": "2018-03-02 10:36:50",
+          "trigger_idx": 854,
+          "trigger_timestamp": "2018-03-02 10:36:50",
+          "threshold": 0.9,
+          "trigger_prob": 0.9992127418518066,
+          "raw_lead_sec": 0.0,
+          "classification": "C. POST-ONSET DETECTION",
+          "is_trigger_fp": false
+        },
+        {
+          "episode_id": 1,
+          "onset_idx": 2005,
+          "onset_timestamp": "2018-03-02 12:13:35",
+          "trigger_idx": 1995,
+          "trigger_timestamp": "2018-03-02 12:12:45",
+          "threshold": 0.9,
+          "trigger_prob": 0.999506950378418,
+          "raw_lead_sec": 50.0,
+          "classification": "A. TRUE EARLY WARNING",
+          "is_trigger_fp": false
+        }
+      ],
+      "validated_lead_times": [
+        0.0,
+        50.0
+      ],
+      "validated_mean_lead_time": 25.0
+    },
+    "Temporal_LSTM_30D": {
+      "threshold": 0.9,
+      "raw_lead_time": {
+        "mean_lead_time_seconds": -232.5,
+        "median_lead_time_seconds": -232.5,
+        "max_lead_time_seconds": 45.0,
+        "episodes_detected": 2,
+        "total_episodes": 2
+      },
+      "episodes": [
+        {
+          "episode_id": 0,
+          "onset_idx": 854,
+          "onset_timestamp": "2018-03-02 10:36:50",
+          "trigger_idx": 956,
+          "trigger_timestamp": "2018-03-02 10:45:20",
+          "threshold": 0.9,
+          "trigger_prob": 0.9947876930236816,
+          "raw_lead_sec": -510.0,
+          "classification": "C. POST-ONSET DETECTION",
+          "is_trigger_fp": false
+        },
+        {
+          "episode_id": 1,
+          "onset_idx": 2005,
+          "onset_timestamp": "2018-03-02 12:13:35",
+          "trigger_idx": 1996,
+          "trigger_timestamp": "2018-03-02 12:12:50",
+          "threshold": 0.9,
+          "trigger_prob": 0.9937220215797424,
+          "raw_lead_sec": 45.0,
+          "classification": "A. TRUE EARLY WARNING",
+          "is_trigger_fp": false
+        }
+      ],
+      "validated_lead_times": [
+        -510.0,
+        45.0
+      ],
+      "validated_mean_lead_time": -232.5
+    },
+    "Temporal_GNN_23D": {
+      "threshold": 0.85,
+      "raw_lead_time": {
+        "mean_lead_time_seconds": 27.5,
+        "median_lead_time_seconds": 27.5,
+        "max_lead_time_seconds": 50.0,
+        "episodes_detected": 2,
+        "total_episodes": 2
+      },
+      "episodes": [
+        {
+          "episode_id": 0,
+          "onset_idx": 854,
+          "onset_timestamp": "2018-03-02 10:36:50",
+          "trigger_idx": 853,
+          "trigger_timestamp": "2018-03-02 09:23:55",
+          "threshold": 0.85,
+          "trigger_prob": 0.9459620714187622,
+          "raw_lead_sec": 5.0,
+          "classification": "B. FALSE-POSITIVE PRE-ALARM",
+          "is_trigger_fp": true
+        },
+        {
+          "episode_id": 1,
+          "onset_idx": 2005,
+          "onset_timestamp": "2018-03-02 12:13:35",
+          "trigger_idx": 1995,
+          "trigger_timestamp": "2018-03-02 12:12:45",
+          "threshold": 0.85,
+          "trigger_prob": 0.9994107484817505,
+          "raw_lead_sec": 50.0,
+          "classification": "A. TRUE EARLY WARNING",
+          "is_trigger_fp": false
+        }
+      ],
+      "validated_lead_times": [
+        50.0
+      ],
+      "validated_mean_lead_time": 50.0
+    }
+  },
+  "packet_validation_sensitivity": {
+    "0.05": {
+      "Precision": 0.9646,
+      "Recall": 0.6082,
+      "F1": 0.746,
+      "TP": 354,
+      "FP": 13,
+      "FN": 228
+    },
+    "0.1": {
+      "Precision": 0.9699,
+      "Recall": 0.6082,
+      "F1": 0.7476,
+      "TP": 354,
+      "FP": 11,
+      "FN": 228
+    },
+    "0.2": {
+      "Precision": 0.9725,
+      "Recall": 0.6082,
+      "F1": 0.7484,
+      "TP": 354,
+      "FP": 10,
+      "FN": 228
+    },
+    "0.3": {
+      "Precision": 0.9752,
+      "Recall": 0.6082,
+      "F1": 0.7492,
+      "TP": 354,
+      "FP": 9,
+      "FN": 228
+    },
+    "0.4": {
+      "Precision": 0.9779,
+      "Recall": 0.6082,
+      "F1": 0.75,
+      "TP": 354,
+      "FP": 8,
+      "FN": 228
+    },
+    "0.5": {
+      "Precision": 0.9779,
+      "Recall": 0.6082,
+      "F1": 0.75,
+      "TP": 354,
+      "FP": 8,
+      "FN": 228
+    },
+    "0.6": {
+      "Precision": 0.9806,
+      "Recall": 0.6082,
+      "F1": 0.7508,
+      "TP": 354,
+      "FP": 7,
+      "FN": 228
+    },
+    "0.7": {
+      "Precision": 0.9888,
+      "Recall": 0.6082,
+      "F1": 0.7532,
+      "TP": 354,
+      "FP": 4,
+      "FN": 228
+    },
+    "0.8": {
+      "Precision": 0.9888,
+      "Recall": 0.6082,
+      "F1": 0.7532,
+      "TP": 354,
+      "FP": 4,
+      "FN": 228
+    },
+    "0.9": {
+      "Precision": 0.9916,
+      "Recall": 0.6082,
+      "F1": 0.754,
+      "TP": 354,
+      "FP": 3,
+      "FN": 228
+    }
+  },
+  "rmse_baselines": {
+    "persistence_rmse": 0.0,
+    "train_mean_rmse": 2.3248131275177,
+    "lstm_rollout_rmse": {
+      "K=1": 2.2567,
+      "K=3": 2.2615,
+      "K=5": 2.2634
+    }
+  },
+  "gnn_topology_stats": {
+    "avg_nodes": 1.0,
+    "median_nodes": 1.0,
+    "max_nodes": 1,
+    "avg_edges": 0.0,
+    "median_edges": 0.0,
+    "max_edges": 0,
+    "pct_gt_1_node": 0.0,
+    "pct_single_node_fallback": 100.0,
+    "pct_zero_edges": 100.0
+  }
+}

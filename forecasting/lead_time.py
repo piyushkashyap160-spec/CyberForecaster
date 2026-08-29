@@ -47,9 +47,10 @@ def compute_forecast_lead_time(
     lead_times_seconds: List[float] = []
     detected_count = 0
 
-    for onset_idx, end_idx in episodes:
-        # Search backwards and forwards around onset to find first threshold crossing
-        search_start = max(0, onset_idx - 10)
+    for ep_idx, (onset_idx, end_idx) in enumerate(episodes):
+        prev_end = episodes[ep_idx - 1][1] if ep_idx > 0 else -1
+        # Search backwards up to 10 windows, strictly clamped to after previous episode end
+        search_start = max(0, onset_idx - 10, prev_end + 1)
         
         trigger_idx = None
         for idx in range(search_start, end_idx + 1):

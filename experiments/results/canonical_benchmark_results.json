@@ -1,0 +1,158 @@
+{
+  "benchmark_metadata": {
+    "dataset": "CSE-CIC-IDS2018",
+    "timeline_file": "Friday-02-03-2018_TrafficForML_CICFlowMeter.csv",
+    "total_dataset_flows": 1048575,
+    "evaluated_stream_flows": 100000,
+    "total_5s_windows": 8640,
+    "sequence_length_windows": 10,
+    "evaluation_split": {
+      "train_sequences": 4270,
+      "validation_sequences": 1708,
+      "test_sequences": 2562,
+      "test_benign_sequences": 859,
+      "test_malicious_sequences": 1703,
+      "zero_temporal_leakage": true,
+      "scaler_fitting": "train_split_only",
+      "threshold_selection": "validation_split_only"
+    }
+  },
+  "classification_results": {
+    "Static_Logistic_Regression_23D": {
+      "model_type": "Static Logistic Regression",
+      "input_dimension": 23,
+      "validation_tuned_threshold": 0.20,
+      "Precision": 0.9341,
+      "Recall": 0.9988,
+      "F1_Score": 0.9654,
+      "FPR": 0.1397,
+      "Confusion_Matrix": {
+        "TP": 1701,
+        "FP": 120,
+        "TN": 739,
+        "FN": 2
+      }
+    },
+    "Naive_Persistence_Baseline_23D": {
+      "model_type": "Persistence Activity Baseline",
+      "input_dimension": 23,
+      "validation_tuned_threshold": 0.05,
+      "Precision": 0.9028,
+      "Recall": 0.3053,
+      "F1_Score": 0.4563,
+      "FPR": 0.0652,
+      "Confusion_Matrix": {
+        "TP": 520,
+        "FP": 56,
+        "TN": 803,
+        "FN": 1183
+      }
+    },
+    "Temporal_LSTM_World_Model_23D": {
+      "model_type": "Temporal LSTM World Model (Primary Architecture)",
+      "input_dimension": 23,
+      "validation_tuned_threshold": 0.90,
+      "Precision": 0.9692,
+      "Recall": 0.9965,
+      "F1_Score": 0.9826,
+      "FPR": 0.0629,
+      "Confusion_Matrix": {
+        "TP": 1697,
+        "FP": 54,
+        "TN": 805,
+        "FN": 6
+      }
+    },
+    "Temporal_GNN_World_Model_23D": {
+      "model_type": "Temporal GNN World Model",
+      "input_dimension": 23,
+      "validation_tuned_threshold": 0.85,
+      "Precision": 0.9883,
+      "Recall": 0.9959,
+      "F1_Score": 0.9921,
+      "FPR": 0.0233,
+      "Confusion_Matrix": {
+        "TP": 1696,
+        "FP": 20,
+        "TN": 839,
+        "FN": 7
+      },
+      "topology_caveat": "Evaluated data uses 100% single-node fallback (1 node, 0 edges); score reflects recurrent parameterization, NOT demonstrated graph-structural superiority."
+    },
+    "Temporal_LSTM_30D_Packet_Enriched_Ablation": {
+      "model_type": "Temporal LSTM (Ablation / Failed Packet Fusion)",
+      "input_dimension": 30,
+      "validation_tuned_threshold": 0.90,
+      "Precision": 0.9959,
+      "Recall": 0.4228,
+      "F1_Score": 0.5936,
+      "FPR": 0.0035,
+      "Confusion_Matrix": {
+        "TP": 720,
+        "FP": 3,
+        "TN": 856,
+        "FN": 983
+      },
+      "status": "ablation_failure",
+      "note": "Global 5-second interval PCAP feature aggregation diluted subtle flow variance; not recommended for production."
+    }
+  },
+  "future_state_rmse_benchmarks": {
+    "evaluation_methodology": "Scaled feature state vector prediction evaluated against actual ground-truth future states X(t+K) on untouched test sequences.",
+    "horizons": {
+      "K_1_step_5s_ahead": {
+        "persistence_rmse": 11.7373,
+        "training_mean_rmse": 2.1498,
+        "lstm_rollout_rmse": 2.0549
+      },
+      "K_3_steps_15s_ahead": {
+        "persistence_rmse": 12.0022,
+        "training_mean_rmse": 2.4191,
+        "lstm_rollout_rmse": 2.3484
+      },
+      "K_5_steps_25s_ahead": {
+        "persistence_rmse": 12.0051,
+        "training_mean_rmse": 2.2245,
+        "lstm_rollout_rmse": 2.1577
+      }
+    },
+    "primary_scientific_claim": "On the evaluated real CIC-IDS2018 test data, the Temporal LSTM achieved a K=1 future-state RMSE of 2.0549, compared with 11.7373 for persistence and 2.1498 for the training-mean baseline, maintaining superior predictive accuracy across all evaluated horizons."
+  },
+  "lead_time_evaluation": {
+    "status": "exploratory",
+    "test_attack_episodes_count": 2,
+    "validated_lead_time_seconds": 0.0,
+    "genuine_pre_onset_detections": 0,
+    "false_positive_pre_alarms": {
+      "Static_LR_23D": 1,
+      "Naive_Persistence": 1,
+      "Temporal_GNN_23D": 1,
+      "Temporal_LSTM_23D": 0
+    },
+    "episode_audit": {
+      "Episode_0": {
+        "onset_timestamp": "2018-03-02 10:36:50",
+        "duration_seconds": 5730,
+        "temporal_lstm_trigger": "2018-03-02 10:36:50",
+        "temporal_lstm_lead_time": "0.0s (Exact Onset Detection with 0 false alarms on preceding benign baseline)"
+      },
+      "Episode_1": {
+        "onset_timestamp": "2018-03-02 12:13:35",
+        "duration_seconds": 2785,
+        "temporal_lstm_trigger": "2018-03-02 12:13:10",
+        "note": "Candidate detection occurred during the 25s inter-burst gap containing lingering attack states from Episode 0 in the 10-step sequence memory; not a valid pre-onset foresight."
+      }
+    },
+    "scientific_limitation_disclosure": "Lead-time statistics on this benchmark are strictly exploratory because only N=2 attack episodes exist in the test block. No claim of generalized early-warning advance lead time (>0s) is made."
+  },
+  "gnn_topology_audit": {
+    "total_windows_evaluated": 8640,
+    "average_nodes_per_window": 1.00,
+    "median_nodes_per_window": 1.0,
+    "max_nodes_per_window": 1,
+    "average_edges_per_window": 0.00,
+    "single_node_fallback_percentage": 100.0,
+    "graph_superiority_demonstrated": false,
+    "disclosure": "The evaluated CIC-IDS2018 dataset is pre-aggregated per interface without host IP pair topology. The Temporal GNN operates entirely in single-node fallback mode and does NOT demonstrate graph topological advantage."
+  }
+}

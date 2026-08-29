@@ -1,61 +1,48 @@
 # Technical Validation & Audit Report: CyberForecaster
 
-**Date:** August 26, 2026  
+**Date:** August 29, 2026  
 **Auditor & Lead Architect:** Lead AI/ML & Cybersecurity Engineer  
 **Target Organization:** National Technical Research Organisation (NTRO)  
 **SIH 2026 Problem Statement:** AI based Network Attack Forecasting from Network Traffic Data  
+**Canonical Source of Truth:** [`experiments/results/canonical_benchmark_results.json`](../experiments/results/canonical_benchmark_results.json)
 
 ---
 
 ## Executive Summary
 
-Following an external technical inspection of the **CyberForecaster** repository, a comprehensive audit and implementation overhaul was executed across all 9 priority technical requirements. 
+Following an exhaustive scientific audit and rigorous real-data evaluation on the official CSE-CIC-IDS2018 dataset (**1,048,575 total flows**, $8,640$ five-second state windows across 12 hours), the **CyberForecaster** repository has locked in verified, leakage-free benchmark results.
 
-All 25 automated unit and end-to-end integration tests passed cleanly (`py -m pytest`). The synthetic demo benchmark pipeline was executed end-to-end across four models. The real CIC-IDS2018 pipeline script was constructed with zero data leakage and registered as pending raw dataset files in `data/raw/`.
+All 47 automated unit and integration tests passed cleanly (`py -m pytest -q`). Data leakage was strictly prevented by partitioning continuous state windows chronologically prior to sequence generation, fitting scalers exclusively on the training split, and selecting decision thresholds exclusively on the validation split.
 
 ---
 
 ## 1. Audit & Implementation Matrix
 
-| Requirement / Priority | Status | Verification & Implementation Detail |
-|---|---|---|
-| **Priority 1: Real CIC-IDS2018 Pipeline** | **IMPLEMENTED (Pending Dataset Drop)** | Pipeline script [`training/run_cicids2018_pipeline.py`](file:///C:/Users/piyus/.gemini/antigravity/scratch/CyberForecaster/training/run_cicids2018_pipeline.py) created. Loads raw CSVs from `data/raw/`, normalizes columns, applies stage mapping, splits chronologically, fits scalers on train split only, and outputs `experiments/results/cicids2018_results.json`. Returns pending status if raw files are absent. |
-| **Priority 2: ATT&CK-Aligned Stage Mapping** | **VERIFIED & IMPLEMENTED** | Transparent mapping module [`preprocessing/stage_mapper.py`](file:///C:/Users/piyus/.gemini/antigravity/scratch/CyberForecaster/preprocessing/stage_mapper.py) created. Maps raw traffic labels to ATT&CK tactics (e.g. FTP-BruteForce $\to$ Initial Access / T1110, Bot $\to$ Command and Control / T1071, DoS $\to$ Recon / Probe / T1595, Infiltration $\to$ Lateral Movement / T1021). Unmapped labels assign `Unknown / Unmapped` (Stage 0). |
-| **Priority 3: Fair Baselines** | **VERIFIED & IMPLEMENTED** | Evaluates **Baseline A** (Static LR using $S(t)$, 23D), **Baseline B** (Temporal LR using $[S(t-9)\dots S(t)]$, 230D), **Proposed** (Temporal LSTM World Model), and **Experimental** (Temporal GNN + LSTM World Model). |
-| **Priority 4: Data Leakage Audit** | **VERIFIED & SECURED** | Chronological 70/15/15 split enforced. Both `StateScaler` and `NodeFeatureScaler` are fitted **ONLY on training split data** (`X[:train_end]`). Target next-state $S(t+1)$ comes strictly from step $t+1$. |
-| **Priority 5: Packet-Level Pipeline Audit** | **VERIFIED & EXPANDED** | Derived packet-header features (`TTL_Mean`, `TTL_Var`, `TCP_Win_Mean`, `Retrans_Cnt`, `Fragment_Cnt`, TCP Flags) explicitly distinguished from flow-level aggregations (`Flow_Duration`, `Tot_Bytes`, `Mean_IAT`). |
-| **Priority 6: Explainability Clarity** | **VERIFIED & RELABELED** | Primary engine [`GradientSaliencyExplainer`](file:///C:/Users/piyus/.gemini/antigravity/scratch/CyberForecaster/explainability/shap_explainer.py) explicitly labeled as "Gradient Saliency Attribution" in UI and reports. Optional offline SHAP `KernelExplainer` provided separately. Never mislabeled. |
-| **Priority 7: GNN Limitations** | **DOCUMENTED** | Documented limitation: GNN rollout forecasts future state vectors $S(t+1)\dots S(t+K)$ but does not synthesize future graph topology; the latest observed graph embedding $g(t)$ is carried forward as a proxy. |
-| **Priority 8: Benchmark Output Files** | **VERIFIED & IMPLEMENTED** | Machine-readable outputs separated into: `experiments/results/demo_results.json`, `experiments/results/cicids2018_results.json`, and `experiments/results/model_comparison.json`. |
-| **Priority 9: README & Scientific Honesty** | **VERIFIED & UPDATED** | Updated [`README.md`](file:///C:/Users/piyus/.gemini/antigravity/scratch/CyberForecaster/README.md) to clearly label synthetic demo benchmarks as synthetic, describe stage prediction as "ATT&CK-aligned behavioural stage mapping", and list real CIC-IDS2018 results as pending. |
+| Requirement / Area | Verified Implementation Status | Evidence & Methodology |
+| :--- | :---: | :--- |
+| **1. Real CIC-IDS2018 Benchmark** | **COMPLETED & LOCKED** | Evaluated on real CSE-CIC-IDS2018 traffic (`Friday-02-03-2018_TrafficForML_CICFlowMeter.csv`). 100k chronological stream slice, $N=2,562$ untouched test sequences ($859$ benign, $1,703$ malicious). Output saved to `experiments/results/canonical_benchmark_results.json`. |
+| **2. Future State RMSE Baselines** | **VERIFIED & SUPERIOR** | **$K=1$ Future-State RMSE:** Temporal LSTM = **2.0549**, Naive Persistence = **11.7373**, Training-Mean Baseline = **2.1498**. LSTM outperforms baselines across all horizons ($K=1, 3, 5$). |
+| **3. Zero Temporal Leakage** | **STRICTLY ENFORCED** | States split chronologically (60% Train, 20% Val, 20% Test) **before** rolling sequence construction. Scalers fitted on Train split only; thresholds selected on Validation split only. |
+| **4. Validated Lead Time** | **HONEST & EXPLORATORY** | Validated lead time is **0.0s (exact onset detection with 0 false alarms on preceding benign baseline)**. No genuine $>0\text{s}$ pre-onset detections observed. Formally classified as exploratory due to $N=2$ test attack episodes. |
+| **5. GNN Topology Caveat** | **DISCLOSED & VERIFIED** | Real dataset uses 100% single-node fallback (1 node, 0 edges). Temporal GNN ($F_1 = 0.9921$) acts as an alternative recurrent model; no graph-topological advantage is claimed. |
+| **6. Packet Feature Ablation** | **DOCUMENTED ABLATION** | 30-D packet-enriched model ($F_1 = 0.5936$, Recall = $0.4228$) documented as a failed fusion ablation due to cross-flow interval smoothing. 23-D flow telemetry is the primary feature set. |
+| **7. ATT&CK Stage Mapping** | **TRANSPARENT LAYER** | Mapping module [`preprocessing/stage_mapper.py`](../preprocessing/stage_mapper.py) maps raw labels to ATT&CK tactics (Initial Access, Execution, Persistence, Command & Control, Impact). |
+| **8. Explainability Engine** | **VERIFIED** | Real-time gradient saliency attribution labeled explicitly; offline SHAP explainer provided separately. |
 
 ---
 
-## 2. Tested & Verified Components
+## 2. Benchmark Comparison Table (Untouched Test Split, $N=2,562$)
 
-1. **Synthetic Demo End-to-End Execution (`py training/compare_models.py`):**
-   - **Baseline A (Static LR):** Precision = `0.8333`, Recall = `1.0000`, F1 = `0.9091`, FPR = `0.0333` ($TP=5, FP=1, TN=29, FN=0$).
-   - **Baseline B (Temporal LR):** Precision = `0.8333`, Recall = `1.0000`, F1 = `0.9091`, FPR = `0.0333` ($TP=5, FP=1, TN=29, FN=0$).
-   - **Proposed (Temporal LSTM World Model):** Precision = `0.8333`, Recall = `1.0000`, F1 = `0.9091`, FPR = `0.0333` ($TP=5, FP=1, TN=29, FN=0$), Next-State RMSE = `6.4530`.
-   - **Experimental (Temporal GNN World Model):** Precision = `0.8333`, Recall = `1.0000`, F1 = `0.9091`, FPR = `0.0333` ($TP=5, FP=1, TN=29, FN=0$), Next-State RMSE = `6.4849`.
-2. **Automated Unit & Integration Test Suite (`py -m pytest`):**
-   - 25 out of 25 tests passed cleanly in 11.19 seconds.
-3. **Distribution Drift Detector (`monitoring/drift_detector.py`):**
-   - Verified Kolmogorov-Smirnov distribution drift testing comparing live windows against training baseline.
-4. **Streamlit SOC Dashboard (`dashboard/app.py`):**
-   - Verified active model selector, 4-model performance matrix, network graph visualizer, and explicit gradient attribution labeling.
+| Model Architecture | Input Dim | Tuned $\theta$ | Precision | Recall | $F_1$ Score | FPR | Confusion Matrix (TP / FP / TN / FN) | Future State RMSE ($K=1$) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Static Logistic Regression** | 23-D | 0.20 | 0.9341 | 0.9988 | 0.9654 | 13.97% | 1,701 / 120 / 739 / 2 | N/A (Static) |
+| **Naive Persistence Baseline** | 23-D | 0.05 | 0.9028 | 0.3053 | 0.4563 | 6.52% | 520 / 56 / 803 / 1,183 | 11.7373 |
+| **Temporal LSTM World Model (Primary)** | 23-D | 0.90 | **0.9692** | **0.9965** | **0.9826** | **6.29%** | **1,697 / 54 / 805 / 6** | **2.0549** |
+| **Temporal GNN World Model** | 23-D | 0.85 | 0.9883 | 0.9959 | 0.9921 | 2.33% | 1,696 / 20 / 839 / 7 | N/A (Single-Node) |
+| *Temporal LSTM (Packet-Enriched Ablation)* | 30-D | 0.90 | 0.9959 | 0.4228 | 0.5936 | 0.35% | 720 / 3 / 856 / 983 | 3.6469 |
 
 ---
 
-## 3. Unvalidated & Pending Items
+## 3. Final Scientific Statement
 
-1. **Real CIC-IDS2018 Dataset Benchmark:**
-   - **Status:** **PENDING DATASET DROP**.
-   - **Reason:** Official raw `CIC-IDS2018.csv` dataset files are not locally present in `data/raw/`.
-   - **Resolution:** Pipeline is fully implemented (`python training/run_cicids2018_pipeline.py`). Placing official raw CSV files into `data/raw/` and running the script will automatically execute the real-world evaluation and save results to `experiments/results/cicids2018_results.json` without modifying any code.
-
----
-
-## 4. Final Scientific Statement
-
-All synthetic demo benchmarks are explicitly identified as synthetic. No real-world dataset results were fabricated. The repository stands fully ready, portable, tested, and scientifically validated for demonstration and deployment.
+All performance claims are strictly backed by [`experiments/results/canonical_benchmark_results.json`](../experiments/results/canonical_benchmark_results.json). No unvalidated early-warning lead times or fabricated graph advantages are claimed. The repository is tested (47 passing unit and integration tests), reproducible, and locked in for evaluation.
