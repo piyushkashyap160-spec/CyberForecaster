@@ -4,7 +4,7 @@ import {
   ShieldAlert, Shield, Server, Cpu, Database,
   Activity, CheckCircle, RefreshCw, AlertTriangle, Layers, Clock,
   ExternalLink, CheckCircle2, XCircle, HardDrive, Search, Filter,
-  TrendingUp, Compass, FileText, Lock, Network, ArrowRight
+  TrendingUp, Compass, FileText, Lock, Network, ArrowRight, Download, Zap, Radio
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend
@@ -14,7 +14,7 @@ const API_BASE = "http://127.0.0.1:8000/api";
 const SOCKET_URL = "http://127.0.0.1:8000";
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState("dashboard"); // dashboard, forecast, traffic, topology, alerts, audit
+  const [activeTab, setActiveTab] = useState("dashboard"); // dashboard, forecast, traffic, mitigations, topology, alerts, audit
   const [hosts, setHosts] = useState([]);
   const [selectedHostIp, setSelectedHostIp] = useState("192.168.1.10");
   const [alerts, setAlerts] = useState([]);
@@ -27,6 +27,10 @@ export default function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [latestForecast, setLatestForecast] = useState({});
   const [worldModelStatus, setWorldModelStatus] = useState(null);
+  const [mitigations, setMitigations] = useState([]);
+  const [flowDetectorStatus, setFlowDetectorStatus] = useState(null);
+  const [snortStatus, setSnortStatus] = useState(null);
+  const [selectedAlertForDrawer, setSelectedAlertForDrawer] = useState(null);
 
   // Collector UI State
   const [collectorInterfaces, setCollectorInterfaces] = useState([]);
@@ -49,6 +53,9 @@ export default function App() {
     fetchCollectorInterfaces();
     fetchCollectorStatus();
     fetchWorldModelStatus();
+    fetchMitigations();
+    fetchFlowDetectorStatus();
+    fetchSnortStatus();
 
     // Setup Socket.io Connection
     socketRef.current = io(SOCKET_URL, {
@@ -93,12 +100,16 @@ export default function App() {
 
     socketRef.current.on("host_status_change", ({ ip, status }) => {
       setHosts(prev => prev.map(h => h.ip === ip ? { ...h, status } : h));
+      fetchMitigations();
     });
 
     // Background poll for collector status every 3s as fallback
     const pollTimer = setInterval(() => {
       fetchCollectorStatus();
       fetchWorldModelStatus();
+      fetchMitigations();
+      fetchFlowDetectorStatus();
+      fetchSnortStatus();
     }, 3000);
 
     return () => {
@@ -128,6 +139,76 @@ export default function App() {
     } catch (err) {
       console.error("Error fetching alerts:", err);
     }
+  };
+
+  const fetchMitigations = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/mitigations`);
+      if (res.ok) {
+        const data = await res.json();
+        setMitigations(data);
+      }
+    } catch (err) {
+      console.error("Error fetching mitigations:", err);
+    }
+  };
+
+  const fetchFlowDetectorStatus = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/flow_detector/status`);
+      if (res.ok) {
+        const data = await res.json();
+        setFlowDetectorStatus(data);
+      }
+    } catch (err) {
+      console.error("Error fetching flow detector status:", err);
+    }
+  };
+
+  const fetchSnortStatus = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/snort/status`);
+      if (res.ok) {
+        const data = await res.json();
+        setSnortStatus(data);
+      }
+    } catch (err) {
+      console.error("Error fetching snort status:", err);
+    }
+  };
+
+  const exportFlowsToCSV = () => {
+    if (trafficEvents.length === 0) return;
+    const headers = ["timestamp", "hostIp", "dstIp", "protocol", "duration", "total_bytes", "action"];
+    const rows = trafficEvents.map(e => [
+      e.timestamp || "",
+      e.hostIp || "",
+      e.dstIp || "",
+      e.protocol || "",
+      e.duration || "",
+      e.total_bytes || "",
+      e.action || ""
+    ]);
+    const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `cyberforecaster_flows_${new Date().toISOString().slice(0, 19)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const getDynamicSubnet = () => {
+    const activeIf = collectorInterfaces.find(i => (typeof i === 'object' && i.name === selectedInterface) || i === selectedInterface);
+    if (activeIf && typeof activeIf === 'object' && activeIf.ip && activeIf.ip !== 'N/A' && !activeIf.ip.startsWith('169.254.')) {
+      const parts = activeIf.ip.split(".");
+      if (parts.length === 4) {
+        return `Subnet: ${parts[0]}.${parts[1]}.${parts[2]}.0/24 (Capture IP: ${activeIf.ip})`;
+      }
+    }
+    return "Dynamic Capture Subnet";
   };
 
   const fetchWorldModelStatus = async () => {
@@ -359,6 +440,7 @@ export default function App() {
             { id: "dashboard", label: "Dashboard", icon: Layers },
             { id: "forecast", label: "Forecast", icon: TrendingUp },
             { id: "traffic", label: "Live Traffic", icon: Activity },
+            { id: "mitigations", label: "Mitigations", icon: Shield },
             { id: "topology", label: "Topology", icon: Network },
             { id: "alerts", label: "Alerts", icon: ShieldAlert },
             { id: "audit", label: "Audit Log", icon: Database }
@@ -379,20 +461,35 @@ export default function App() {
                   {alerts.length}
                 </span>
               )}
+              {tab.id === "mitigations" && hosts.some(h => h.status !== "ONLINE") && (
+                <span className="ml-1 px-1.5 py-0.2 text-[9px] rounded-full bg-severity-high text-white">
+                  {hosts.filter(h => h.status !== "ONLINE").length}
+                </span>
+              )}
             </button>
           ))}
         </nav>
 
         {/* Indicators */}
-        <div className="flex items-center gap-3 text-xs font-mono-tech">
-          <div className="flex items-center gap-2 bg-base-bg border border-severity-normal/20 px-3 py-1 rounded-full text-severity-normal">
-            <div className="h-1.5 w-1.5 rounded-full bg-severity-normal pulse-indicator"></div>
-            <span className="text-[11px]">WORLD MODEL {currentWarmup.status}</span>
+        <div className="flex items-center gap-2.5 text-xs font-mono-tech">
+          <div className="flex items-center gap-1.5 bg-base-bg border border-base-border px-2.5 py-1 rounded text-text-muted text-[10px]">
+            <Zap className="h-3 w-3 text-accent" />
+            <span>FLOW DETECTOR: <strong className={flowDetectorStatus?.status === 'ACTIVE' ? 'text-severity-normal' : 'text-text-secondary'}>{flowDetectorStatus?.status || 'STANDBY'}</strong></span>
           </div>
 
-          <div className={`flex items-center gap-2 bg-base-bg px-3 py-1 rounded-full border ${isConnected ? "border-base-border text-text-secondary" : "border-severity-critical/30 text-severity-critical"}`}>
+          <div className="flex items-center gap-1.5 bg-base-bg border border-base-border px-2.5 py-1 rounded text-text-muted text-[10px]">
+            <Radio className="h-3 w-3 text-accent" />
+            <span>SNORT: <strong className={snortStatus?.connected ? 'text-severity-normal' : 'text-text-secondary'}>{snortStatus?.status || 'NOT CONNECTED'}</strong></span>
+          </div>
+
+          <div className="flex items-center gap-2 bg-base-bg border border-severity-normal/20 px-2.5 py-1 rounded text-severity-normal text-[10px]">
+            <div className="h-1.5 w-1.5 rounded-full bg-severity-normal pulse-indicator"></div>
+            <span>WORLD MODEL {currentWarmup.status}</span>
+          </div>
+
+          <div className={`flex items-center gap-2 bg-base-bg px-2.5 py-1 rounded border text-[10px] ${isConnected ? "border-base-border text-text-secondary" : "border-severity-critical/30 text-severity-critical"}`}>
             <div className={`h-1.5 w-1.5 rounded-full ${isConnected ? "bg-severity-normal" : "bg-severity-critical"}`}></div>
-            <span className="text-[11px]">{isConnected ? "ONLINE" : "DISCONNECTED"}</span>
+            <span>{isConnected ? "ONLINE" : "DISCONNECTED"}</span>
           </div>
         </div>
       </header>
@@ -980,7 +1077,7 @@ export default function App() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-text-muted">Total Volume:</span>
-                      <span className="font-bold text-text-secondary">{(collectorStatus.bytes_captured / 1024).toFixed(1)} KB</span>
+                      <span className="font-bold text-text-secondary">{(((collectorStatus && typeof collectorStatus.bytes_captured === 'number') ? collectorStatus.bytes_captured : 0) / 1024).toFixed(1)} KB</span>
                     </div>
                   </div>
                 </div>
@@ -1027,8 +1124,18 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="text-xs font-mono-tech text-text-muted">
-                  Showing <strong className="text-text-primary">{filteredTraffic.length}</strong> of {trafficEvents.length} Buffered Flows
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={exportFlowsToCSV}
+                    disabled={trafficEvents.length === 0}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-base-bg border border-base-border hover:bg-base-surfaceHover text-text-primary text-xs font-mono-tech transition-colors disabled:opacity-40"
+                  >
+                    <Download className="h-3.5 w-3.5 text-accent" />
+                    Export CSV ({trafficEvents.length})
+                  </button>
+                  <div className="text-xs font-mono-tech text-text-muted">
+                    Showing <strong className="text-text-primary">{filteredTraffic.length}</strong> of {trafficEvents.length} Buffered Flows
+                  </div>
                 </div>
               </div>
 
@@ -1063,7 +1170,7 @@ export default function App() {
                           <td className="text-text-secondary">{ev.dstIp}</td>
                           <td>
                             <span className="px-1.5 py-0.2 rounded text-[9px] bg-base-bg border border-base-border text-text-secondary font-bold">
-                              {ev.protocol === 1 ? "TCP" : (ev.protocol === 0.5 ? "UDP" : "ICMP")}
+                              {typeof ev.protocol === 'string' ? ev.protocol : (ev.protocol === 1 ? "TCP" : (ev.protocol === 0.5 ? "UDP" : "ICMP"))}
                             </span>
                           </td>
                           <td className="text-text-muted">{ev.duration?.toFixed(3)}s</td>
@@ -1094,6 +1201,131 @@ export default function App() {
           </div>
         )}
 
+        {/* ----------------- MITIGATIONS TAB ----------------- */}
+        {activeTab === "mitigations" && (
+          <div className="grid grid-cols-12 gap-5">
+            <div className="col-span-8 bg-base-surface border border-base-border rounded-lg p-5">
+              <div className="flex justify-between items-center border-b border-base-border pb-3 mb-4">
+                <div className="flex items-center gap-2">
+                  <Shield className="h-5 w-5 text-accent" />
+                  <div>
+                    <h3 className="font-bold uppercase text-xs tracking-wider font-mono-tech text-text-primary">
+                      Active Defense & Mitigation Interventions
+                    </h3>
+                    <p className="text-[10px] text-text-muted font-mono-tech">
+                      Enforce dynamic ACLs, port blocks, flow rate-limits, and quarantine containment.
+                    </p>
+                  </div>
+                </div>
+                <span className="text-xs font-mono-tech text-text-secondary">
+                  <strong>{hosts.filter(h => h.status !== 'ONLINE').length}</strong> Active Host Mitigations
+                </span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left font-mono-tech text-xs">
+                  <thead>
+                    <tr className="border-b border-base-border text-text-secondary uppercase tracking-wider text-[10px]">
+                      <th className="py-2.5 font-semibold">Host Name</th>
+                      <th className="font-semibold">IP Address</th>
+                      <th className="font-semibold">Active Policy</th>
+                      <th className="font-semibold">Criticality</th>
+                      <th className="font-semibold">Current State</th>
+                      <th className="text-right font-semibold">Defensive Controls</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-base-border/50">
+                    {hosts.map(h => (
+                      <tr key={h.ip} className="hover:bg-base-surfaceHover/50 transition-colors">
+                        <td className="py-3 font-bold text-text-primary">{h.name}</td>
+                        <td className="text-text-secondary">{h.ip}</td>
+                        <td>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            h.status === 'ISOLATED' ? 'bg-severity-critical/10 text-severity-critical border border-severity-critical/30' :
+                            (h.status === 'PORTS_BLOCKED' ? 'bg-severity-high/10 text-severity-high border border-severity-high/30' :
+                            (h.status === 'RATE_LIMITED' ? 'bg-severity-medium/10 text-severity-medium border border-severity-medium/30' :
+                            'bg-severity-normal/10 text-severity-normal border border-severity-normal/20'))
+                          }`}>
+                            {h.status}
+                          </span>
+                        </td>
+                        <td className="text-accent font-semibold">{h.criticality}</td>
+                        <td className="text-text-muted text-[10px]">{h.department}</td>
+                        <td className="text-right py-3">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {h.status === 'ONLINE' ? (
+                              <>
+                                <button
+                                  onClick={() => handleDefensiveAction(h.ip, "RATE_LIMIT")}
+                                  className="px-2 py-1 rounded bg-base-bg border border-base-border hover:bg-base-surfaceHover text-[10px] text-text-secondary transition-colors"
+                                >
+                                  Rate Limit
+                                </button>
+                                <button
+                                  onClick={() => handleDefensiveAction(h.ip, "BLOCK_PORTS")}
+                                  className="px-2 py-1 rounded bg-base-bg border border-base-border hover:bg-base-surfaceHover text-[10px] text-severity-high transition-colors"
+                                >
+                                  Block Ports
+                                </button>
+                                <button
+                                  onClick={() => handleDefensiveAction(h.ip, "ISOLATE")}
+                                  className="px-2 py-1 rounded bg-severity-critical/10 border border-severity-critical/30 hover:bg-severity-critical/20 text-[10px] text-severity-critical font-bold transition-colors"
+                                >
+                                  Isolate
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                onClick={() => handleDefensiveAction(h.ip, "RESET")}
+                                className="px-3 py-1 rounded bg-severity-normal/10 border border-severity-normal/30 hover:bg-severity-normal/20 text-[10px] text-severity-normal font-bold transition-colors"
+                              >
+                                Release / Reset to Online
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Mitigation History Log */}
+            <div className="col-span-4 bg-base-surface border border-base-border rounded-lg p-5 font-mono-tech text-xs">
+              <div className="flex items-center gap-2 border-b border-base-border pb-3 mb-3">
+                <Clock className="h-4 w-4 text-accent" />
+                <h3 className="font-semibold uppercase text-xs tracking-wider text-text-secondary">
+                  Mitigation Action Log
+                </h3>
+              </div>
+
+              <div className="space-y-2.5 max-h-[460px] overflow-y-auto pr-1">
+                {mitigations.length === 0 ? (
+                  <p className="text-center py-8 text-text-muted text-[11px]">
+                    No mitigation events recorded. All enterprise hosts operating normally.
+                  </p>
+                ) : (
+                  mitigations.map((m, idx) => (
+                    <div key={idx} className="bg-base-bg border border-base-border rounded p-2.5">
+                      <div className="flex justify-between items-start mb-1">
+                        <span className="font-bold text-text-primary text-[11px]">{m.hostIp}</span>
+                        <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${m.active ? 'bg-severity-critical/10 text-severity-critical' : 'bg-severity-normal/10 text-severity-normal'}`}>
+                          {m.action}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-text-muted leading-relaxed">{m.reason}</p>
+                      <span className="text-[9px] text-text-muted block mt-1">
+                        {new Date(m.timestamp).toLocaleTimeString()}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ----------------- 4. TOPOLOGY TAB ----------------- */}
         {activeTab === "topology" && (
           <div className="grid grid-cols-12 gap-5">
@@ -1107,7 +1339,7 @@ export default function App() {
                       Monitored Asset Topology
                     </h3>
                     <p className="text-[10px] text-text-muted font-mono-tech">
-                      Configured Enterprise Subnet (192.168.1.0/24)
+                      {getDynamicSubnet()}
                     </p>
                   </div>
                 </div>
@@ -1356,7 +1588,11 @@ export default function App() {
                     </tr>
                   ) : (
                     filteredAlerts.map(alert => (
-                      <tr key={alert._id} className="hover:bg-base-surfaceHover/50 transition-colors">
+                      <tr
+                        key={alert._id}
+                        onClick={() => setSelectedAlertForDrawer(alert)}
+                        className="hover:bg-base-surfaceHover/50 transition-colors cursor-pointer"
+                      >
                         <td className="py-2.5 text-text-muted text-[10px]">
                           {new Date(alert.timestamp).toLocaleString()}
                         </td>
@@ -1387,7 +1623,7 @@ export default function App() {
                         </td>
                         <td className="text-right py-2.5">
                           <button
-                            onClick={() => verifyBlockchain(alert)}
+                            onClick={(e) => { e.stopPropagation(); verifyBlockchain(alert); }}
                             className="px-2.5 py-1 rounded bg-base-bg border border-base-border hover:border-accent/40 text-text-secondary hover:text-text-primary text-[10px] transition-colors"
                           >
                             Verify Audit
@@ -1477,6 +1713,117 @@ export default function App() {
         )}
 
       </div>
+
+      {/* Alert Detail Slide-Out Drawer */}
+      {selectedAlertForDrawer && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-xs">
+          <div className="w-full max-w-md bg-base-surface border-l border-base-border h-full p-6 flex flex-col justify-between font-mono-tech shadow-2xl overflow-y-auto">
+            <div>
+              <div className="flex justify-between items-center border-b border-base-border pb-3 mb-4">
+                <div className="flex items-center gap-2">
+                  <ShieldAlert className="h-5 w-5 text-severity-critical" />
+                  <div>
+                    <h3 className="font-bold text-xs uppercase tracking-wider text-text-primary">
+                      Threat Alert Forensics
+                    </h3>
+                    <p className="text-[10px] text-text-muted">ID: {selectedAlertForDrawer._id?.slice(0, 12)}...</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedAlertForDrawer(null)}
+                  className="p-1 rounded text-text-muted hover:text-text-primary transition-colors"
+                >
+                  <XCircle className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div className="bg-base-bg p-3 rounded-lg border border-base-border space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-text-muted">Target Host:</span>
+                    <span className="font-bold text-text-primary">{selectedAlertForDrawer.hostIp}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-text-muted">Severity:</span>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${selectedAlertForDrawer.severity === "CRITICAL" ? "bg-severity-critical/10 text-severity-critical" : "bg-severity-high/10 text-severity-high"}`}>
+                      {selectedAlertForDrawer.severity}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-text-muted">Forecasted Stage:</span>
+                    <span className="text-accent font-semibold">{selectedAlertForDrawer.predictedStage}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-text-muted">Confidence:</span>
+                    <span className="text-text-primary font-bold">{(selectedAlertForDrawer.confidence * 100).toFixed(1)}%</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-text-muted">Timestamp:</span>
+                    <span className="text-text-secondary text-[10px]">{new Date(selectedAlertForDrawer.timestamp).toLocaleString()}</span>
+                  </div>
+                </div>
+
+                {/* MITRE Techniques */}
+                <div className="bg-base-bg p-3 rounded-lg border border-base-border">
+                  <span className="text-[10px] text-text-muted block mb-1.5 uppercase font-bold">MITRE ATT&CK Techniques</span>
+                  <div className="space-y-1">
+                    {selectedAlertForDrawer.mitreTechniques && selectedAlertForDrawer.mitreTechniques.length > 0 ? (
+                      selectedAlertForDrawer.mitreTechniques.map((t, idx) => (
+                        <span key={idx} className="inline-block px-2 py-1 bg-accent/10 border border-accent/20 rounded text-[10px] text-accent font-medium mr-1.5 mb-1">
+                          {t}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-text-muted text-[10px]">No specific MITRE ATT&CK technique mapped.</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Snort Evidence */}
+                <div className="bg-base-bg p-3 rounded-lg border border-base-border">
+                  <span className="text-[10px] text-text-muted block mb-1.5 uppercase font-bold">Correlated Snort Signature Evidence</span>
+                  {selectedAlertForDrawer.snortEvidence ? (
+                    <div className="text-[10px] text-text-secondary space-y-1">
+                      <div><strong>Signature:</strong> {selectedAlertForDrawer.snortEvidence.message}</div>
+                      <div><strong>Priority:</strong> {selectedAlertForDrawer.snortEvidence.priority}</div>
+                      <div><strong>Protocol:</strong> {selectedAlertForDrawer.snortEvidence.protocol}</div>
+                    </div>
+                  ) : (
+                    <span className="text-text-muted text-[10px]">No local Snort signature alert correlated for this event.</span>
+                  )}
+                </div>
+
+                {/* Blockchain Audit Status */}
+                <div className="bg-base-bg p-3 rounded-lg border border-base-border">
+                  <span className="text-[10px] text-text-muted block mb-1.5 uppercase font-bold">Cryptographic Ledger Provenance</span>
+                  <div className="text-[10px] space-y-1">
+                    <div className="truncate"><strong>Tx Hash:</strong> <span className="text-severity-normal">{selectedAlertForDrawer.blockchainTxHash || "Pending / Offline Node"}</span></div>
+                    <div className="truncate"><strong>SHA-256 Hash:</strong> <span className="text-text-muted">{selectedAlertForDrawer.dataHash || "Computed"}</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-base-border space-y-2">
+              <span className="text-[10px] text-text-muted block">TRIGGER MITIGATION ON HOST:</span>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => { handleDefensiveAction(selectedAlertForDrawer.hostIp, "RATE_LIMIT"); setSelectedAlertForDrawer(null); }}
+                  className="p-2 rounded bg-base-bg border border-base-border hover:bg-base-surfaceHover text-text-secondary text-[10px]"
+                >
+                  Rate Limit
+                </button>
+                <button
+                  onClick={() => { handleDefensiveAction(selectedAlertForDrawer.hostIp, "ISOLATE"); setSelectedAlertForDrawer(null); }}
+                  className="p-2 rounded bg-severity-critical/10 border border-severity-critical/30 hover:bg-severity-critical/20 text-severity-critical text-[10px] font-bold"
+                >
+                  Isolate Host
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Blockchain Verification Modal */}
       {verifyingAlert && (

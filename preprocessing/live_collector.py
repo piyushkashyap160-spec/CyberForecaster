@@ -1022,6 +1022,7 @@ class LiveNetworkCollector:
             "interface": self.capture_interface,
             "packets_captured": self.packets_captured,
             "flows_generated": self.flows_generated,
+            "bytes_captured": self.bytes_captured,
             "last_event_timestamp": self.last_event_timestamp,
             "capture_start_time": self.capture_start_time,
             "errors": list(self._errors[-5:]),  # Last 5 errors

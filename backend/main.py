@@ -24,6 +24,8 @@ from preprocessing.scaler import StateScaler
 from preprocessing.stage_mapper import map_label_to_stage, ATTACK_STAGES
 from preprocessing.state_encoder import encode_window_to_state, STATE_FEATURE_KEYS
 from preprocessing.live_collector import LiveNetworkCollector
+from preprocessing.flow_detector import FastFlowDetector
+from monitoring.snort_correlator import SnortCorrelator
 from models.lstm_world_model import TemporalLSTMWorldModel
 from models.temporal_gnn_world_model import TemporalGNNWorldModel
 from forecasting.rollout import perform_k_step_rollout
@@ -33,8 +35,10 @@ import pandas as pd
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("cyberforecaster.backend")
 
-# Initialize Live Collector instance
+# Initialize Live Collector, Flow Detector, and Snort Correlator
 LIVE_COLLECTOR = LiveNetworkCollector(flow_timeout=5.0)
+FAST_FLOW_DETECTOR = FastFlowDetector()
+SNORT_CORRELATOR = SnortCorrelator()
 
 # Initialize Socket.io AsyncServer
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
@@ -69,12 +73,19 @@ MODEL_LSTM = None
 MODEL_GNN = None
 SCALER = None
 
-# In-memory storage for hosts, alerts, traffic events, and blockchain logs
+# In-memory storage for hosts, alerts, traffic events, blockchain logs, and mitigations
 HOSTS_DB: Dict[str, Dict[str, Any]] = {}
 ALERTS_DB: List[Dict[str, Any]] = []
 TRAFFIC_EVENTS_DB: List[Dict[str, Any]] = []
 BLOCKCHAIN_LOGS: Dict[str, Dict[str, Any]] = {}
-HOST_TRAFFIC_HISTORY: Dict[str, List[np.ndarray]] = {}
+MITIGATIONS_DB: List[Dict[str, Any]] = []
+
+# Live temporal window buffer for cold-start live inference (starts strictly empty: 0/10)
+LIVE_WINDOW_HISTORY: Dict[str, List[np.ndarray]] = {}
+
+# Demo / baseline history used for pre-capture simulations and rollout demos
+DEMO_TRAFFIC_HISTORY: Dict[str, List[np.ndarray]] = {}
+HOST_TRAFFIC_HISTORY: Dict[str, List[np.ndarray]] = DEMO_TRAFFIC_HISTORY
 
 
 import web3
@@ -236,7 +247,7 @@ def seed_hosts_and_history():
         }
         
         if idx < len(benign_state_sequences):
-            HOST_TRAFFIC_HISTORY[ip] = [np.array(v, dtype=np.float32) for v in benign_state_sequences[idx]]
+            DEMO_TRAFFIC_HISTORY[ip] = [np.array(v, dtype=np.float32) for v in benign_state_sequences[idx]]
         else:
             # Physical fallback baseline template (positive flow/bytes)
             base_state = np.array([
@@ -244,14 +255,15 @@ def seed_hosts_and_history():
                 0.8, 0.2, 0.05, 0.7, 0.02, 0.01, 500.0, 100.0, 0.2, 0.08,
                 3.0, 0.2, 60.0, 0.9, 0.9, 0.2, 0.0, 2.5
             ], dtype=np.float32)
-            HOST_TRAFFIC_HISTORY[ip] = [base_state.copy() for _ in range(10)]
+            DEMO_TRAFFIC_HISTORY[ip] = [base_state.copy() for _ in range(10)]
 
 
 async def live_collector_event_pump():
     """
     Background worker that continuously pulls completed flows from the Live Collector,
-    constructs the 23-D network state vector, updates the host's temporal context window,
-    runs the Temporal LSTM World Model forecast, and emits real-time Socket.IO events.
+    evaluates per-flow suspicion (FastFlowDetector), correlates with Snort alerts,
+    accumulates genuine live temporal windows (cold-start 0/10 -> 10/10),
+    runs the Temporal LSTM World Model forecast upon 10 genuine windows, and emits Socket.IO events.
     """
     logger.info("Live Collector Socket.IO event pump task started.")
     last_status_emit = 0.0
@@ -276,6 +288,12 @@ async def live_collector_event_pump():
                 src_ip = str(flow.get("src_ip", "192.168.1.10"))
                 dst_ip = str(flow.get("dst_ip", "10.0.0.1"))
 
+                # 1. Fast per-flow suspicion detection
+                fast_det = FAST_FLOW_DETECTOR.predict_flow(flow)
+
+                # 2. Local Snort signature alert correlation
+                snort_match = SNORT_CORRELATOR.correlate_flow(flow)
+
                 event = {
                     "timestamp": flow.get("capture_timestamp", datetime.now(timezone.utc).isoformat()),
                     "hostIp": src_ip,
@@ -285,7 +303,9 @@ async def live_collector_event_pump():
                     "port_danger": 0.0,
                     "protocol": proto_str,
                     "protocol_code": proto_code,
-                    "action": 0
+                    "action": 0,
+                    "fast_detection": fast_det,
+                    "snort_alert": snort_match
                 }
                 TRAFFIC_EVENTS_DB.append(event)
                 if len(TRAFFIC_EVENTS_DB) > 500:
@@ -295,25 +315,25 @@ async def live_collector_event_pump():
                 await sio.emit("collector_status", LIVE_COLLECTOR.get_status())
                 last_status_emit = time.time()
 
-                # --- Live ML Feature Extraction & World Model Forecast ---
+                # --- Genuine Cold-Start Live Window Aggregation & World Model Forecast ---
                 try:
                     df_flow = convert_flows_to_cyberforecaster_dataframe([flow])
                     state_rec = encode_window_to_state(df_flow, window_seconds=5.0)
                     live_vector_23d = state_rec['vector_flow_only']
 
                     target_ip = src_ip if src_ip in HOSTS_DB else ("192.168.1.10" if "192.168.1.10" in HOSTS_DB else list(HOSTS_DB.keys())[0])
-                    if target_ip not in HOST_TRAFFIC_HISTORY:
-                        HOST_TRAFFIC_HISTORY[target_ip] = []
+                    if target_ip not in LIVE_WINDOW_HISTORY:
+                        LIVE_WINDOW_HISTORY[target_ip] = []
 
-                    HOST_TRAFFIC_HISTORY[target_ip].append(live_vector_23d)
-                    if len(HOST_TRAFFIC_HISTORY[target_ip]) > 10:
-                        HOST_TRAFFIC_HISTORY[target_ip] = HOST_TRAFFIC_HISTORY[target_ip][-10:]
+                    LIVE_WINDOW_HISTORY[target_ip].append(live_vector_23d)
+                    if len(LIVE_WINDOW_HISTORY[target_ip]) > 10:
+                        LIVE_WINDOW_HISTORY[target_ip] = LIVE_WINDOW_HISTORY[target_ip][-10:]
 
-                    win_count = len(HOST_TRAFFIC_HISTORY[target_ip])
+                    win_count = len(LIVE_WINDOW_HISTORY[target_ip])
                     is_ready = (win_count >= 10) and (MODEL_LSTM is not None) and (SCALER is not None)
 
                     if is_ready:
-                        seq = np.array(HOST_TRAFFIC_HISTORY[target_ip][-10:])  # (10, 23)
+                        seq = np.array(LIVE_WINDOW_HISTORY[target_ip][-10:])  # (10, 23)
                         seq_scaled = SCALER.transform(seq[np.newaxis, :, :])  # (1, 10, 23)
                         seq_tensor = torch.tensor(seq_scaled, dtype=torch.float32).to(DEVICE)
 
@@ -379,14 +399,15 @@ async def live_collector_event_pump():
                                 "timestamp": datetime.now(timezone.utc).isoformat(),
                                 "blockchainTxHash": tx_hash,
                                 "dataHash": data_hash,
-                                "actionTaken": "PENDING_REVIEW"
+                                "actionTaken": "PENDING_REVIEW",
+                                "snortEvidence": snort_match
                             }
                             ALERTS_DB.append(alert_entry)
                             if len(ALERTS_DB) > 100:
                                 ALERTS_DB.pop(0)
                             await sio.emit("forecast_alert", alert_entry)
                     else:
-                        # Emitting warm-up state update
+                        # Emitting truthful cold-start warm-up state update
                         warmup_payload = {
                             "hostIp": target_ip,
                             "threatLevel": 0.0,
@@ -550,7 +571,8 @@ async def get_alerts():
 @fastapi_app.get("/api/world_model/status")
 async def get_world_model_status():
     default_ip = "192.168.1.10"
-    win_count = len(HOST_TRAFFIC_HISTORY.get(default_ip, []))
+    live_hist = LIVE_WINDOW_HISTORY.get(default_ip, [])
+    win_count = len(live_hist)
     is_ready = win_count >= 10 and (MODEL_LSTM is not None) and (SCALER is not None)
 
     return {
@@ -585,6 +607,21 @@ async def get_canonical_benchmark():
     return {"error": "Canonical benchmark results not found"}
 
 
+@fastapi_app.get("/api/flow_detector/status")
+async def get_flow_detector_status():
+    return FAST_FLOW_DETECTOR.get_status()
+
+
+@fastapi_app.get("/api/snort/status")
+async def get_snort_status():
+    return SNORT_CORRELATOR.get_status()
+
+
+@fastapi_app.get("/api/mitigations")
+async def get_mitigations():
+    return list(MITIGATIONS_DB[:50])
+
+
 @fastapi_app.get("/api/collector/interfaces")
 async def get_collector_interfaces():
     interfaces = LIVE_COLLECTOR.discover_interfaces()
@@ -612,10 +649,9 @@ async def get_collector_status():
         "interface": LIVE_COLLECTOR.capture_interface,
         "packets_captured": LIVE_COLLECTOR.packets_captured,
         "flows_generated": LIVE_COLLECTOR.flows_generated,
-        "bytes_captured": LIVE_COLLECTOR.bytes_captured,
+        "bytes_captured": LIVE_COLLECTOR.bytes_captured or 0,
         "start_time": LIVE_COLLECTOR.capture_start_time
     }
-
 
 
 @fastapi_app.post("/api/hosts/action")
@@ -640,6 +676,21 @@ async def take_host_action(req: ActionRequest):
     HOSTS_DB[ip]["status"] = status
     await sio.emit("host_status_change", {"ip": ip, "status": status})
 
+    # Record mitigation entry in dedicated MITIGATIONS_DB
+    mitigation_record = {
+        "_id": str(uuid.uuid4()),
+        "hostIp": ip,
+        "hostName": HOSTS_DB[ip].get("name", "Enterprise Host"),
+        "action": action,
+        "status": "ACTIVE" if action != "RESET" else "RELEASED",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "reason": f"SOC operator triggered {action} defensive mitigation" if action != "RESET" else "Defensive mitigation reset to ONLINE",
+        "active": action != "RESET"
+    }
+    MITIGATIONS_DB.insert(0, mitigation_record)
+    if len(MITIGATIONS_DB) > 100:
+        MITIGATIONS_DB.pop()
+
     # Record action event in traffic feed
     event = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -647,13 +698,14 @@ async def take_host_action(req: ActionRequest):
         "duration": 0.0,
         "total_bytes": 0,
         "port_danger": 0.0,
-        "protocol": 1,
+        "protocol": "TCP",
+        "protocol_code": 1.0,
         "action": 1 if action == "RATE_LIMIT" else (2 if action == "BLOCK_PORTS" else (3 if action == "ISOLATE" else 0))
     }
     TRAFFIC_EVENTS_DB.append(event)
     await sio.emit("traffic_update", event)
 
-    return {"message": f"Host {ip} status updated to {status}", "host": HOSTS_DB[ip]}
+    return {"message": f"Host {ip} status updated to {status}", "host": HOSTS_DB[ip], "mitigation": mitigation_record}
 
 
 @fastapi_app.post("/api/forecasts/rollout")
@@ -662,10 +714,17 @@ async def get_forecast_rollout(req: RolloutRequest):
     action = req.action or "do_nothing"
     k_steps = req.k_steps or 6
 
-    if ip not in HOST_TRAFFIC_HISTORY:
-        seed_hosts_and_history()
+    # Use live history if >= 10 live windows exist, otherwise fall back to demo history for preview simulation
+    host_seq = LIVE_WINDOW_HISTORY.get(ip)
+    if not host_seq or len(host_seq) < 10:
+        if ip not in DEMO_TRAFFIC_HISTORY or len(DEMO_TRAFFIC_HISTORY[ip]) < 10:
+            seed_hosts_and_history()
+        host_seq = DEMO_TRAFFIC_HISTORY.get(ip, [])
 
-    seq = np.array(HOST_TRAFFIC_HISTORY[ip][-10:]) # (10, 23)
+    if not host_seq or len(host_seq) < 10:
+        raise HTTPException(status_code=400, detail="Insufficient temporal history for rollout.")
+
+    seq = np.array(host_seq[-10:])  # (10, 23)
 
     # Compute specific requested action rollout
     requested_rollout = perform_k_step_rollout(MODEL_LSTM, SCALER, seq, k_steps=k_steps, device=DEVICE, action=action)

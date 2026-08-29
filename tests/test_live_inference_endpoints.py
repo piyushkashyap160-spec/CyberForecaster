@@ -69,3 +69,75 @@ def test_socketio_handshake_endpoints():
     res_app = client_app.get("/socket.io/?EIO=4&transport=polling")
     assert res_app.status_code == 200, f"app socket.io handshake failed: {res_app.status_code}"
     assert "sid" in res_app.text
+
+
+def test_cold_start_warmup_status():
+    """Verify that world model status correctly reflects cold-start status without fabrication."""
+    res = client.get("/api/world_model/status")
+    assert res.status_code == 200
+    data = res.json()
+    assert "windows_collected" in data
+    assert "windows_required" in data
+    assert data["windows_required"] == 10
+    assert data["status"] in ["READY", "WARMING UP"]
+
+
+def test_collector_status_bytes_captured():
+    """Verify that collector status always returns a non-null bytes_captured integer."""
+    from backend.main import LIVE_COLLECTOR
+    res = client.get("/api/collector/status")
+    assert res.status_code == 200
+    data = res.json()
+    assert "bytes_captured" in data
+    assert isinstance(data["bytes_captured"], int)
+    assert data["bytes_captured"] >= 0
+
+    # Also test LiveNetworkCollector.get_status directly
+    status = LIVE_COLLECTOR.get_status()
+    assert "bytes_captured" in status
+    assert isinstance(status["bytes_captured"], int)
+
+
+def test_fast_flow_detector_endpoint():
+    """Verify that fast flow detector endpoint reports status without fabrication."""
+    res = client.get("/api/flow_detector/status")
+    assert res.status_code == 200
+    data = res.json()
+    assert "model_type" in data
+    assert "status" in data
+    assert data["status"] in ["ACTIVE", "NOT_CONFIGURED"]
+
+
+def test_snort_status_endpoint():
+    """Verify that Snort correlator reports connection status accurately."""
+    res = client.get("/api/snort/status")
+    assert res.status_code == 200
+    data = res.json()
+    assert "connected" in data
+    assert "status" in data
+    assert data["status"] in ["CONNECTED", "NOT CONNECTED"]
+
+
+def test_mitigations_endpoints_and_actions():
+    """Verify that defensive host actions update state and are logged in mitigations table."""
+    from backend.main import seed_hosts_and_history
+    seed_hosts_and_history()
+
+    # Enforce Rate Limit on 192.168.1.10
+    res_act = client.post("/api/hosts/action", json={"ip": "192.168.1.10", "action": "RATE_LIMIT"})
+    assert res_act.status_code == 200
+    act_data = res_act.json()
+    assert act_data["host"]["status"] == "RATE_LIMITED"
+
+    # Query mitigations list
+    res_mit = client.get("/api/mitigations")
+    assert res_mit.status_code == 200
+    mits = res_mit.json()
+    assert len(mits) > 0
+    assert mits[0]["hostIp"] == "192.168.1.10"
+    assert mits[0]["action"] == "RATE_LIMIT"
+
+    # Reset host back to ONLINE
+    res_rst = client.post("/api/hosts/action", json={"ip": "192.168.1.10", "action": "RESET"})
+    assert res_rst.status_code == 200
+    assert res_rst.json()["host"]["status"] == "ONLINE"
