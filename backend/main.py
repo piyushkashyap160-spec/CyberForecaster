@@ -3,6 +3,7 @@ import sys
 import uuid
 import time
 import json
+import asyncio
 import logging
 import hashlib
 from datetime import datetime, timezone
@@ -241,10 +242,64 @@ def seed_hosts_and_history():
             HOST_TRAFFIC_HISTORY[ip] = [base_state.copy() for _ in range(10)]
 
 
+async def live_collector_event_pump():
+    """
+    Background worker that continuously pulls completed flows from the Live Collector
+    and emits real-time 'traffic_update' and 'collector_status' Socket.IO events.
+    """
+    logger.info("Live Collector Socket.IO event pump task started.")
+    last_status_emit = 0.0
+    while True:
+        try:
+            now = time.time()
+            if LIVE_COLLECTOR.is_running and now - last_status_emit >= 1.0:
+                await sio.emit("collector_status", LIVE_COLLECTOR.get_status())
+                last_status_emit = now
+
+            try:
+                # Non-blocking check for completed flows from aggregator
+                flow = await asyncio.wait_for(LIVE_COLLECTOR.flow_queue.get(), timeout=1.0)
+            except asyncio.TimeoutError:
+                flow = None
+
+            if flow:
+                proto_str = str(flow.get("protocol", "TCP")).upper()
+                proto_code = 1.0 if proto_str == "TCP" else (0.5 if proto_str == "UDP" else 0.0)
+                dur = float(flow.get("duration", 0.001))
+                bytes_cnt = int(flow.get("byte_count", 64))
+
+                event = {
+                    "timestamp": flow.get("capture_timestamp", datetime.now(timezone.utc).isoformat()),
+                    "hostIp": str(flow.get("src_ip", "192.168.1.10")),
+                    "dstIp": str(flow.get("dst_ip", "10.0.0.1")),
+                    "duration": dur,
+                    "total_bytes": bytes_cnt,
+                    "port_danger": 0.0,
+                    "protocol": proto_code,
+                    "action": 0
+                }
+                TRAFFIC_EVENTS_DB.append(event)
+                if len(TRAFFIC_EVENTS_DB) > 500:
+                    TRAFFIC_EVENTS_DB.pop(0)
+
+                print(f"[TRAFFIC_UPDATE] host={event['hostIp']} dst={event['dstIp']} bytes={event['total_bytes']} dur={event['duration']} proto={event['protocol']}", flush=True)
+                await sio.emit("traffic_update", event)
+                await sio.emit("collector_status", LIVE_COLLECTOR.get_status())
+                last_status_emit = time.time()
+
+        except Exception as e:
+            logger.error(f"Error in live collector event pump: {e}")
+            await asyncio.sleep(1.0)
+
+
 @fastapi_app.on_event("startup")
 async def startup_event():
     load_models_and_config()
     seed_hosts_and_history()
+    # Bind running event loop to live collector for thread-safe queueing
+    loop = asyncio.get_running_loop()
+    LIVE_COLLECTOR.set_loop(loop)
+    asyncio.create_task(live_collector_event_pump())
     logger.info("CyberForecaster FastAPI backend startup complete.")
 
 

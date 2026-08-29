@@ -53,7 +53,15 @@ export default function App() {
     });
 
     socketRef.current.on("traffic_update", (event) => {
+      console.log("[FRONTEND_FLOW]", event);
       setTrafficEvents(prev => [event, ...prev].slice(0, 30));
+    });
+
+    socketRef.current.on("collector_status", (status) => {
+      setCollectorStatus(status);
+      if (status && status.running && status.interface) {
+        setSelectedInterface(status.interface);
+      }
     });
 
     socketRef.current.on("forecast_update", (forecast) => {
@@ -72,7 +80,13 @@ export default function App() {
       setHosts(prev => prev.map(h => h.ip === ip ? { ...h, status } : h));
     });
 
+    // Background poll for collector status every 3s as fallback
+    const pollTimer = setInterval(() => {
+      fetchCollectorStatus();
+    }, 3000);
+
     return () => {
+      clearInterval(pollTimer);
       if (socketRef.current) socketRef.current.disconnect();
     };
   }, []);
@@ -109,8 +123,10 @@ export default function App() {
       const data = await res.json();
       if (data.interfaces && data.interfaces.length > 0) {
         setCollectorInterfaces(data.interfaces);
+        // If not set yet, pick first interface that has an active IPv4 address
         if (!selectedInterface) {
-          const defaultIf = typeof data.interfaces[0] === 'string' ? data.interfaces[0] : (data.interfaces[0].name || "eth0");
+          const activeWithIp = data.interfaces.find(i => typeof i === 'object' && i.ip && i.ip !== 'N/A' && !i.ip.startsWith('169.254.'));
+          const defaultIf = activeWithIp ? activeWithIp.name : (typeof data.interfaces[0] === 'string' ? data.interfaces[0] : (data.interfaces[0].name || "eth0"));
           setSelectedInterface(defaultIf);
         }
       }
@@ -124,6 +140,9 @@ export default function App() {
       const res = await fetch(`${API_BASE}/collector/status`);
       const data = await res.json();
       setCollectorStatus(data);
+      if (data && data.running && data.interface) {
+        setSelectedInterface(data.interface);
+      }
     } catch (err) {
       console.error("Error fetching collector status:", err);
     }
@@ -477,15 +496,17 @@ export default function App() {
                 <select
                   value={selectedInterface}
                   onChange={(e) => setSelectedInterface(e.target.value)}
-                  className="w-full bg-base-bg border border-base-border rounded px-2.5 py-1.5 text-text-primary focus:outline-none focus:border-accent text-xs font-mono-tech"
+                  className="w-full bg-base-bg border border-base-border rounded px-2.5 py-1.5 text-text-primary focus:outline-none focus:border-accent text-xs font-mono-tech truncate"
                 >
                   {collectorInterfaces.length === 0 ? (
                     <option value="eth0">eth0 (Default)</option>
                   ) : (
                     collectorInterfaces.map((iface, idx) => {
                       const val = typeof iface === 'string' ? iface : (iface.name || `iface-${idx}`);
-                      const desc = typeof iface === 'string' ? iface : (iface.description || iface.name);
-                      return <option key={idx} value={val}>{desc}</option>;
+                      const displayName = typeof iface === 'object' && iface.display_name ? iface.display_name : (typeof iface === 'string' ? iface : (iface.name || 'Unknown'));
+                      const ipStr = typeof iface === 'object' && iface.ip && iface.ip !== 'N/A' ? ` (${iface.ip})` : '';
+                      const desc = typeof iface === 'object' && iface.description ? ` - ${iface.description}` : '';
+                      return <option key={idx} value={val}>{displayName}{ipStr}{desc}</option>;
                     })
                   )}
                 </select>

@@ -73,50 +73,87 @@ class FlowAggregator:
         self.flow_timeout = flow_timeout
         self._active_flows: dict[tuple, dict] = {}
         self._lock = threading.Lock()
+        self.debug_log_counter = 0
 
     def add_packet(self, packet_info: dict) -> Optional[dict]:
         """
         Adds a parsed packet to the flow table.
-        Returns a completed flow dict if the existing flow for this
-        5-tuple has timed out, otherwise returns None.
+        Normalizes bidirectional 5-tuples and finalizes flows on timeout, FIN/RST,
+        or maximum active duration.
         """
+        ep_a = (packet_info["src_ip"], packet_info["src_port"])
+        ep_b = (packet_info["dst_ip"], packet_info["dst_port"])
+        if ep_a > ep_b:
+            canon_src, canon_src_port = ep_b
+            canon_dst, canon_dst_port = ep_a
+        else:
+            canon_src, canon_src_port = ep_a
+            canon_dst, canon_dst_port = ep_b
+
         key = (
-            packet_info["src_ip"],
-            packet_info["dst_ip"],
-            packet_info["src_port"],
-            packet_info["dst_port"],
+            canon_src,
+            canon_dst,
+            canon_src_port,
+            canon_dst_port,
             packet_info["protocol"],
         )
         now = time.time()
         completed_flow = None
+        flags = packet_info.get("tcp_flags", set())
+
+        # Diagnostic log for captured packet
+        if self.debug_log_counter < 20 or self.debug_log_counter % 200 == 0:
+            print(f"[PACKET] src={packet_info['src_ip']}:{packet_info['src_port']} -> dst={packet_info['dst_ip']}:{packet_info['dst_port']} proto={packet_info['protocol']} len={packet_info['length']}", flush=True)
+            print(f"[FLOW_KEY] {key}", flush=True)
+        self.debug_log_counter += 1
 
         with self._lock:
             if key in self._active_flows:
                 flow = self._active_flows[key]
-                # Check if existing flow has timed out → emit it
-                if now - flow["last_packet_time"] > self.flow_timeout:
-                    completed_flow = self._finalize_flow(flow)
-                    # Start new flow for this key
-                    self._active_flows[key] = self._new_flow(packet_info, now)
-                else:
-                    # Update existing flow
+                flow_duration = now - flow["first_packet_time"]
+                flow_idle = now - flow["last_packet_time"]
+
+                # Check if existing flow should be finalized:
+                # 1. Inactivity timeout (> flow_timeout)
+                # 2. Connection termination (FIN or RST flag)
+                # 3. Maximum active flow chunk duration (> 5.0s)
+                # 4. Packet threshold (>= 50 packets)
+                is_terminated = "F" in flags or "R" in flags
+                if flow_idle > self.flow_timeout or is_terminated or flow_duration >= 5.0 or flow["packet_count"] >= 50:
                     flow["packet_count"] += 1
                     flow["byte_count"] += packet_info["length"]
                     flow["last_packet_time"] = now
-                    flow["tcp_flags"].update(packet_info.get("tcp_flags", set()))
+                    flow["tcp_flags"].update(flags)
+                    completed_flow = self._finalize_flow(self._active_flows.pop(key))
+                    print(f"[FLOW_FLUSH] key={key} pkts={completed_flow['packet_count']} bytes={completed_flow['byte_count']} dur={completed_flow['duration']:.2f}s reason={'term' if is_terminated else ('dur' if flow_duration>=5.0 else 'idle')}", flush=True)
+                else:
+                    # Update active flow
+                    flow["packet_count"] += 1
+                    flow["byte_count"] += packet_info["length"]
+                    flow["last_packet_time"] = now
+                    flow["tcp_flags"].update(flags)
+                    if self.debug_log_counter <= 20:
+                        print(f"[FLOW_UPDATE] key={key} pkts={flow['packet_count']} bytes={flow['byte_count']}", flush=True)
+            else:
+                # New bidirectional 5-tuple flow: initialize
+                self._active_flows[key] = self._new_flow(packet_info, now)
+                print(f"[FLOW_CREATE] key={key} active_flows={len(self._active_flows)}", flush=True)
+
         return completed_flow
 
     def flush_expired(self) -> list[dict]:
-        """Returns all flows that have exceeded the inactivity timeout."""
+        """Returns all flows that have exceeded the inactivity timeout or max duration."""
         now = time.time()
         completed = []
         with self._lock:
             expired_keys = [
                 k for k, v in self._active_flows.items()
-                if now - v["last_packet_time"] > self.flow_timeout
+                if (now - v["last_packet_time"] > self.flow_timeout) or (now - v["first_packet_time"] >= 5.0)
             ]
             for k in expired_keys:
-                completed.append(self._finalize_flow(self._active_flows.pop(k)))
+                finalized = self._finalize_flow(self._active_flows.pop(k))
+                completed.append(finalized)
+                print(f"[FLOW_FLUSH] (Timer) src={finalized['src_ip']} dst={finalized['dst_ip']} pkts={finalized['packet_count']} bytes={finalized['byte_count']} dur={finalized['duration']:.2f}s", flush=True)
         return completed
 
     def flush_all(self) -> list[dict]:
@@ -674,11 +711,12 @@ class LiveNetworkCollector:
                 "capture_available": False
             })
 
-        # Sort: 'up' interfaces first, then WSL interfaces, then alphabetically
+        # Sort: adapters with valid IP first, then 'up' interfaces, then WSL, then alphabetically
         interfaces.sort(key=lambda x: (
-            0 if x["status"] == "up" else 1,
-            0 if x["name"].startswith("wsl:") else 1,
-            x["display_name"]
+            0 if (x.get("ip") and x["ip"] != "N/A" and not x["ip"].startswith("169.254.") and not x["ip"].startswith("127.")) else 1,
+            0 if x.get("status") == "up" else 1,
+            0 if x.get("name", "").startswith("wsl:") else 1,
+            x.get("display_name", "")
         ))
         return interfaces
 
@@ -1116,14 +1154,8 @@ class LiveNetworkCollector:
         self.last_event_timestamp = datetime.now(timezone.utc).isoformat()
         self.recent_flows.append(flow)
 
-        log_msg = (
-            f"[Flow Generated] Host: {'WSL' if self.capture_interface.startswith('wsl:') else 'Windows'} | "
-            f"Interface: {self.capture_interface} | "
-            f"Flow: {flow.get('src_ip')}:{flow.get('src_port')} -> {flow.get('dst_ip')}:{flow.get('dst_port')} ({flow.get('protocol')}) | "
-            f"Total Flows: {self.flows_generated}"
-        )
-        logger.info(log_msg)
-        # print(log_msg)
+        print(f"[FLOW_FEATURES] src={flow.get('src_ip')}:{flow.get('src_port')} dst={flow.get('dst_ip')}:{flow.get('dst_port')} proto={flow.get('protocol')} pkts={flow.get('packet_count')} bytes={flow.get('byte_count')} dur={flow.get('duration')} syn={flow.get('syn_count')} ack={flow.get('ack_count')}", flush=True)
+        print(f"[FLOW_EMIT] flows_total={self.flows_generated} active_remaining={len(self._aggregator._active_flows)}", flush=True)
 
         try:
             if self._loop is not None:
