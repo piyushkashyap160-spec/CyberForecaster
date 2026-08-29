@@ -199,7 +199,24 @@ def load_models_and_config():
 
 
 def seed_hosts_and_history():
-    for h in INITIAL_HOSTS:
+    demo_csv_path = os.path.join(os.path.dirname(__file__), "..", "data", "demo", "demo_cicids2018.csv")
+    demo_csv_path = os.path.abspath(demo_csv_path)
+
+    benign_state_sequences = []
+    if os.path.exists(demo_csv_path):
+        try:
+            from preprocessing.csv_loader import load_flow_csv
+            from preprocessing.window_builder import build_network_states
+            df = load_flow_csv(demo_csv_path, sample_nrows=5000)
+            states = build_network_states(df, window_seconds=5.0)
+            benign_vectors = [s['vector'] for s in states if s.get('is_attack') == 0]
+            if len(benign_vectors) >= 10:
+                for i in range(0, len(benign_vectors) - 10, 10):
+                    benign_state_sequences.append(benign_vectors[i:i+10])
+        except Exception as e:
+            logger.warning(f"Failed to load demo CSV for seed history: {e}. Using physical baseline template.")
+
+    for idx, h in enumerate(INITIAL_HOSTS):
         ip = h['ip']
         HOSTS_DB[ip] = {
             "ip": ip,
@@ -211,13 +228,17 @@ def seed_hosts_and_history():
             "threatLevel": 0.05,
             "predictedStage": "Normal"
         }
-        # Generate initial dummy 10-step history (23 features) for rollout simulation
-        rng = np.random.RandomState(hash(ip) % 2**32)
-        base_seq = []
-        for _ in range(10):
-            vec = rng.uniform(0.1, 0.5, size=23)
-            base_seq.append(vec)
-        HOST_TRAFFIC_HISTORY[ip] = base_seq
+        
+        if idx < len(benign_state_sequences):
+            HOST_TRAFFIC_HISTORY[ip] = [np.array(v, dtype=np.float32) for v in benign_state_sequences[idx]]
+        else:
+            # Physical fallback baseline template (positive flow/bytes)
+            base_state = np.array([
+                250.0 + idx * 10.0, 150000.0 + idx * 5000.0, 20.0, 20.0, 8.0,
+                0.8, 0.2, 0.05, 0.7, 0.02, 0.01, 500.0, 100.0, 0.2, 0.08,
+                3.0, 0.2, 60.0, 0.9, 0.9, 0.2, 0.0, 2.5
+            ], dtype=np.float32)
+            HOST_TRAFFIC_HISTORY[ip] = [base_state.copy() for _ in range(10)]
 
 
 @fastapi_app.on_event("startup")
@@ -247,7 +268,10 @@ class ActionRequest(BaseModel):
 
 
 class RolloutRequest(BaseModel):
-    hostIp: str
+    hostIp: Optional[str] = "192.168.1.10"
+    action: Optional[str] = "do_nothing"
+    k_steps: Optional[int] = 6
+
 
 
 class InferenceRequest(BaseModel):
@@ -380,13 +404,13 @@ async def get_collector_status():
 
 
 @fastapi_app.post("/api/hosts/action")
-async def take_defensive_action(req: ActionRequest):
+async def take_host_action(req: ActionRequest):
     ip = req.ip
-    action = req.action
+    action = req.action.upper()
+
     if ip not in HOSTS_DB:
         raise HTTPException(status_code=404, detail=f"Host {ip} not found.")
 
-    status = "ONLINE"
     if action == "RATE_LIMIT":
         status = "RATE_LIMITED"
     elif action == "BLOCK_PORTS":
@@ -395,6 +419,8 @@ async def take_defensive_action(req: ActionRequest):
         status = "ISOLATED"
     elif action == "RESET":
         status = "ONLINE"
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
 
     HOSTS_DB[ip]["status"] = status
     await sio.emit("host_status_change", {"ip": ip, "status": status})
@@ -417,18 +443,22 @@ async def take_defensive_action(req: ActionRequest):
 
 @fastapi_app.post("/api/forecasts/rollout")
 async def get_forecast_rollout(req: RolloutRequest):
-    ip = req.hostIp
+    ip = req.hostIp or "192.168.1.10"
+    action = req.action or "do_nothing"
+    k_steps = req.k_steps or 6
+
     if ip not in HOST_TRAFFIC_HISTORY:
-        # Create default host history if not present
-        rng = np.random.RandomState(hash(ip) % 2**32)
-        base_seq = [rng.uniform(0.1, 0.5, size=23) for _ in range(10)]
-        HOST_TRAFFIC_HISTORY[ip] = base_seq
+        seed_hosts_and_history()
 
     seq = np.array(HOST_TRAFFIC_HISTORY[ip][-10:]) # (10, 23)
 
+    # Compute specific requested action rollout
+    requested_rollout = perform_k_step_rollout(MODEL_LSTM, SCALER, seq, k_steps=k_steps, device=DEVICE, action=action)
+
+    # Compute all 4 comparative scenarios
     scenarios = {}
     for action_key in ["do_nothing", "rate_limit", "block_port", "isolate_host"]:
-        rollout_list = perform_k_step_rollout(MODEL_LSTM, SCALER, seq, k_steps=6, device=DEVICE, action=action_key)
+        rollout_list = perform_k_step_rollout(MODEL_LSTM, SCALER, seq, k_steps=k_steps, device=DEVICE, action=action_key)
         scenarios[action_key] = [
             {"threat_level": r['attack_probability'], "stage_id": r['predicted_stage_id']}
             for r in rollout_list
@@ -436,9 +466,22 @@ async def get_forecast_rollout(req: RolloutRequest):
 
     return {
         "hostIp": ip,
-        "rollout_steps": 6,
+        "requested_action": action,
+        "rollout_steps": k_steps,
+        "mitigation_mode": "illustrative mitigation impact (heuristic, not model-learned)",
+        "note": "Mitigation curves apply heuristic impact factors, not action-conditioned world model dynamics.",
+        "trajectory": [
+            {
+                "horizon_step": r['horizon_step'],
+                "threat_level": r['attack_probability'],
+                "stage_id": r['predicted_stage_id'],
+                "state_dict": r['state_dict']
+            }
+            for r in requested_rollout
+        ],
         "scenarios": scenarios
     }
+
 
 
 
@@ -453,7 +496,10 @@ async def run_inference(req: InferenceRequest):
         # Repeat vector 10 times to form sequence if single vector provided
         seq = np.tile(vec, (10, 1))
     else:
-        seq = np.array(HOST_TRAFFIC_HISTORY.get(ip, [np.random.uniform(0.1, 0.5, 23) for _ in range(10)]))
+        if ip not in HOST_TRAFFIC_HISTORY:
+            seed_hosts_and_history()
+        seq = np.array(HOST_TRAFFIC_HISTORY.get(ip, HOST_TRAFFIC_HISTORY["192.168.1.10"]))
+
 
     seq_scaled = SCALER.transform(seq[np.newaxis, :, :]) # (1, 10, 23)
     seq_tensor = torch.tensor(seq_scaled, dtype=torch.float32).to(DEVICE)

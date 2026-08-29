@@ -1,90 +1,79 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Share+Tech+Mono&display=swap');
-
 :root {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-  background-color: #060913;
+  background-color: #0a0e14;
+  color-scheme: dark;
 }
 
 body {
   margin: 0;
-  color: #e2e8f0;
-  background-color: #060913;
-  background-image: 
-    radial-gradient(at 0% 0%, rgba(15, 23, 42, 0.9) 0, transparent 50%),
-    radial-gradient(at 50% 0%, rgba(30, 27, 75, 0.4) 0, transparent 50%),
-    radial-gradient(at 100% 0%, rgba(88, 28, 135, 0.15) 0, transparent 50%);
-  background-attachment: fixed;
+  color: #e6e8ec;
+  background-color: #0a0e14;
   overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .font-mono-tech {
-  font-family: 'Share Tech Mono', monospace;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
 }
 
-/* Glassmorphism scrollbar */
+/* Refined Dark Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(15, 21, 36, 0.5);
+  background: #0a0e14;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(31, 41, 61, 0.8);
+  background: #232838;
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 240, 255, 0.5);
+  background: #2f3648;
 }
 
-/* Grid animation for cyberpunk aesthetic */
-.cyber-grid {
-  background-size: 40px 40px;
+/* Clean Dashboard Background Grid */
+.dashboard-grid {
+  background-color: #0a0e14;
   background-image: 
-    linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    linear-gradient(to right, rgba(35, 40, 56, 0.25) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(35, 40, 56, 0.25) 1px, transparent 1px);
+  background-size: 32px 32px;
 }
 
-/* Glass card styling */
-.glass-card {
-  background: rgba(15, 21, 36, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+/* Subtle Card Styling */
+.card-panel {
+  background-color: #12161f;
+  border: 1px solid #232838;
+  border-radius: 8px;
 }
 
-.glass-card-hover:hover {
-  border-color: rgba(0, 240, 255, 0.25);
-  box-shadow: 0 0 20px rgba(0, 240, 255, 0.05);
+.card-panel-hover {
+  transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
-/* Pulse animation */
-@keyframes cyber-pulse-red {
+.card-panel-hover:hover {
+  border-color: #2f3648;
+  background-color: #171c27;
+}
+
+/* Subtle Status Pulse (Muted Indicator) */
+@keyframes subtle-pulse {
   0%, 100% {
-    box-shadow: 0 0 0 0px rgba(255, 0, 85, 0.7);
+    opacity: 1;
   }
   50% {
-    box-shadow: 0 0 0 8px rgba(255, 0, 85, 0);
+    opacity: 0.4;
   }
 }
 
-@keyframes cyber-pulse-cyan {
-  0%, 100% {
-    box-shadow: 0 0 0 0px rgba(0, 240, 255, 0.7);
-  }
-  50% {
-    box-shadow: 0 0 0 8px rgba(0, 240, 255, 0);
-  }
-}
-
-.pulse-red {
-  animation: cyber-pulse-red 2s infinite;
-}
-
-.pulse-cyan {
-  animation: cyber-pulse-cyan 2s infinite;
+.pulse-indicator {
+  animation: subtle-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
