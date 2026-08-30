@@ -1,4 +1,4 @@
-﻿"""
+"""
 snort_correlator.py
 ===================
 Snort signature alert ingestion and live flow correlation engine.
@@ -77,6 +77,7 @@ class SnortCorrelator:
 
     def correlate_flow(self, flow: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Matches a flow against recently ingested Snort alerts by 5-tuple."""
+        self.poll_alerts()
         if not self.is_connected or not self.alerts_buffer:
             return None
 
