@@ -141,3 +141,65 @@ def test_mitigations_endpoints_and_actions():
     res_rst = client.post("/api/hosts/action", json={"ip": "192.168.1.10", "action": "RESET"})
     assert res_rst.status_code == 200
     assert res_rst.json()["host"]["status"] == "ONLINE"
+
+
+def test_fast_flow_detector_8d_feature_extraction():
+    """Verify exact 8-D feature vector extraction matching training order."""
+    from preprocessing.flow_detector import FastFlowDetector
+    detector = FastFlowDetector()
+    sample_flow = {
+        "duration": 0.55,
+        "byte_count": 1280,
+        "packet_count": 8,
+        "protocol": "TCP",
+        "avg_packet_size": 160.0,
+        "syn_count": 1,
+        "ack_count": 1,
+        "rst_count": 0
+    }
+    feats = detector.extract_features(sample_flow)
+    assert len(feats) == 8
+    assert feats[0] == 0.55   # duration_sec
+    assert feats[1] == 1280.0 # byte_count
+    assert feats[2] == 8.0    # packet_count
+    assert feats[3] == 1.0    # is_tcp (TCP=1.0)
+    assert feats[4] == 160.0  # avg_packet_size
+    assert feats[5] == 1.0    # syn_count
+    assert feats[6] == 1.0    # ack_count
+    assert feats[7] == 0.0    # rst_count
+
+
+def test_fast_flow_detector_prediction_schema():
+    """Verify live prediction schema and confidence score output."""
+    from preprocessing.flow_detector import FastFlowDetector
+    detector = FastFlowDetector()
+    if detector.is_configured:
+        sample_flow = {
+            "duration": 0.05,
+            "byte_count": 64000,
+            "packet_count": 100,
+            "protocol": "TCP",
+            "avg_packet_size": 640.0,
+            "syn_count": 1,
+            "ack_count": 0,
+            "rst_count": 0
+        }
+        res = detector.predict_flow(sample_flow)
+        assert res["available"] is True
+        assert res["status"] == "ACTIVE"
+        assert isinstance(res["suspicious"], bool)
+        assert isinstance(res["confidence"], float)
+        assert 0.0 <= res["confidence"] <= 1.0
+        assert "predicted_label" in res
+
+
+def test_fast_flow_detector_missing_checkpoint_behavior():
+    """Verify that detector reports NOT_CONFIGURED honestly when checkpoint is absent."""
+    from preprocessing.flow_detector import FastFlowDetector
+    detector = FastFlowDetector(model_path="models_weights/non_existent_detector.joblib")
+    assert detector.is_configured is False
+    res = detector.predict_flow({"duration": 0.1})
+    assert res["available"] is False
+    assert res["status"] == "NOT_CONFIGURED"
+    assert res["confidence"] == 0.0
+    assert res["suspicious"] is False

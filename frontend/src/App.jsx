@@ -1176,9 +1176,21 @@ export default function App() {
                           <td className="text-text-muted">{ev.duration?.toFixed(3)}s</td>
                           <td className="text-accent font-semibold">{ev.total_bytes?.toLocaleString()} B</td>
                           <td>
-                            <span className="px-1.5 py-0.2 rounded text-[9px] bg-severity-normal/10 border border-severity-normal/20 text-severity-normal">
-                              BENIGN
-                            </span>
+                            {ev.fast_detection && ev.fast_detection.available ? (
+                              ev.fast_detection.suspicious ? (
+                                <span className="px-1.5 py-0.2 rounded text-[9px] bg-severity-critical/10 border border-severity-critical/30 text-severity-critical font-bold">
+                                  BOT / SUSPICIOUS ({Math.round(ev.fast_detection.confidence * 100)}%)
+                                </span>
+                              ) : (
+                                <span className="px-1.5 py-0.2 rounded text-[9px] bg-severity-normal/10 border border-severity-normal/20 text-severity-normal">
+                                  BENIGN
+                                </span>
+                              )
+                            ) : (
+                              <span className="px-1.5 py-0.2 rounded text-[9px] bg-severity-normal/10 border border-severity-normal/20 text-severity-normal">
+                                BENIGN
+                              </span>
+                            )}
                           </td>
                           <td className="text-right text-text-muted text-[10px]">
                             {ev.action === 1 ? (
