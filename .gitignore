@@ -47,3 +47,6 @@ frontend/dist/
 blockchain/artifacts/
 blockchain/cache/
 
+
+# Runtime logs
+logs/
