@@ -26,6 +26,7 @@ from preprocessing.state_encoder import encode_window_to_state, STATE_FEATURE_KE
 from preprocessing.live_collector import LiveNetworkCollector
 from preprocessing.flow_detector import FastFlowDetector
 from monitoring.snort_correlator import SnortCorrelator
+from monitoring.attack_path_reconstructor import AttackPathReconstructor
 from models.lstm_world_model import TemporalLSTMWorldModel
 from models.temporal_gnn_world_model import TemporalGNNWorldModel
 from forecasting.rollout import perform_k_step_rollout
@@ -35,10 +36,11 @@ import pandas as pd
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("cyberforecaster.backend")
 
-# Initialize Live Collector, Flow Detector, and Snort Correlator
+# Initialize Live Collector, Flow Detector, Snort Correlator, and Attack Path Reconstructor
 LIVE_COLLECTOR = LiveNetworkCollector(flow_timeout=5.0)
 FAST_FLOW_DETECTOR = FastFlowDetector()
 SNORT_CORRELATOR = SnortCorrelator()
+ATTACK_PATH_RECONSTRUCTOR = AttackPathReconstructor()
 
 # Initialize Socket.io AsyncServer
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
@@ -113,7 +115,7 @@ def get_blockchain_contract():
     global BLOCKCHAIN_CONTRACT
     if BLOCKCHAIN_CONTRACT is not None:
         return BLOCKCHAIN_CONTRACT
-    
+
     deployment_path = "blockchain/deployments/localhost.json"
     if os.path.exists(deployment_path) and w3.is_connected():
         try:
@@ -245,7 +247,7 @@ def seed_hosts_and_history():
             "threatLevel": 0.05,
             "predictedStage": "Normal"
         }
-        
+
         if idx < len(benign_state_sequences):
             DEMO_TRAFFIC_HISTORY[ip] = [np.array(v, dtype=np.float32) for v in benign_state_sequences[idx]]
         else:
@@ -314,6 +316,11 @@ async def live_collector_event_pump():
                 await sio.emit("traffic_update", event)
                 await sio.emit("collector_status", LIVE_COLLECTOR.get_status())
                 last_status_emit = time.time()
+
+                # --- Live Attack Path Reconstruction ---
+                active_paths = ATTACK_PATH_RECONSTRUCTOR.add_flow_event(event, HOSTS_DB)
+                if active_paths:
+                    await sio.emit("attack_path_update", active_paths)
 
                 # --- Genuine Cold-Start Live Window Aggregation & World Model Forecast ---
                 try:
@@ -563,6 +570,11 @@ async def get_hosts():
     return list(HOSTS_DB.values())
 
 
+@fastapi_app.get("/api/topology/attack_paths")
+async def get_topology_attack_paths():
+    return ATTACK_PATH_RECONSTRUCTOR.get_active_paths()
+
+
 @fastapi_app.get("/api/alerts")
 async def get_alerts():
     return list(reversed(ALERTS_DB[-100:]))
@@ -762,7 +774,7 @@ async def get_forecast_rollout(req: RolloutRequest):
 @fastapi_app.post("/api/inference")
 async def run_inference(req: InferenceRequest):
     ip = req.hostIp or "192.168.1.10"
-    
+
     if req.sequence is not None:
         seq = np.array(req.sequence, dtype=np.float32)
     elif req.state_vector is not None:
@@ -820,7 +832,7 @@ async def run_inference(req: InferenceRequest):
     if prob >= 0.50 and stage_name != "Normal":
         alert_id = str(uuid.uuid4())
         severity = "CRITICAL" if prob >= 0.85 else ("HIGH" if prob >= 0.70 else "MEDIUM")
-        
+
         # Cryptographic Data Hash for Blockchain verification
         data_string = f"{ip}:{stage_name}:{prob:.4f}"
         data_hash = hashlib.sha256(data_string.encode('utf-8')).hexdigest()

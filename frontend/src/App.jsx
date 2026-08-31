@@ -28,6 +28,7 @@ export default function App() {
   const [latestForecast, setLatestForecast] = useState({});
   const [worldModelStatus, setWorldModelStatus] = useState(null);
   const [mitigations, setMitigations] = useState([]);
+  const [attackPaths, setAttackPaths] = useState([]);
   const [flowDetectorStatus, setFlowDetectorStatus] = useState(null);
   const [snortStatus, setSnortStatus] = useState(null);
   const [selectedAlertForDrawer, setSelectedAlertForDrawer] = useState(null);
@@ -50,6 +51,7 @@ export default function App() {
   useEffect(() => {
     fetchHosts();
     fetchAlerts();
+    fetchAttackPaths();
     fetchCollectorInterfaces();
     fetchCollectorStatus();
     fetchWorldModelStatus();
@@ -103,6 +105,10 @@ export default function App() {
       fetchMitigations();
     });
 
+    socketRef.current.on("attack_path_update", (paths) => {
+      setAttackPaths(paths);
+    });
+
     // Background poll for collector status every 3s as fallback
     const pollTimer = setInterval(() => {
       fetchCollectorStatus();
@@ -110,6 +116,7 @@ export default function App() {
       fetchMitigations();
       fetchFlowDetectorStatus();
       fetchSnortStatus();
+      fetchAttackPaths();
     }, 3000);
 
     return () => {
@@ -117,6 +124,16 @@ export default function App() {
       if (socketRef.current) socketRef.current.disconnect();
     };
   }, []);
+
+  const fetchAttackPaths = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/topology/attack_paths`);
+      const data = await res.json();
+      setAttackPaths(data);
+    } catch (err) {
+      console.error("Error fetching attack paths:", err);
+    }
+  };
 
   const fetchHosts = async () => {
     try {
@@ -1527,13 +1544,45 @@ export default function App() {
                   </h3>
                 </div>
 
-                <div className="py-4 text-center text-text-muted text-xs">
-                  <Shield className="h-6 w-6 mx-auto mb-2 text-severity-normal" />
-                  <p className="font-bold text-text-primary">NO ATTACK PATH ESTABLISHED</p>
-                  <p className="text-[10px] text-text-muted mt-1">
-                    No multi-hop lateral progression detected in current live telemetry.
-                  </p>
-                </div>
+                {attackPaths.length === 0 ? (
+                  <div className="py-4 text-center text-text-muted text-xs">
+                    <Shield className="h-6 w-6 mx-auto mb-2 text-severity-normal" />
+                    <p className="font-bold text-text-primary">NO ATTACK PATH ESTABLISHED</p>
+                    <p className="text-[10px] text-text-muted mt-1">
+                      No multi-hop lateral progression detected in current live telemetry.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-[240px] overflow-y-auto pr-1">
+                    {attackPaths.map((path) => (
+                      <div key={path.path_id} className="p-3 bg-base-bg/90 border border-severity-critical/40 rounded-md">
+                        <div className="flex justify-between items-center mb-1.5">
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-severity-critical/20 text-severity-critical border border-severity-critical/30">
+                            {path.severity} LATERAL PROGRESSION
+                          </span>
+                          <span className="text-[9px] text-text-muted font-mono-tech">{path.mitre_technique}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-wrap my-2 text-[11px] font-bold">
+                          <span className="text-text-primary">{path.source}</span>
+                          {path.hops.map((hop, hIdx) => (
+                            <span key={hIdx} className="flex items-center gap-1 text-severity-critical">
+                              <span>&rarr;</span>
+                              <span>{hop.to}</span>
+                            </span>
+                          ))}
+                        </div>
+                        <div className="text-[9px] text-text-muted border-t border-base-border/50 pt-1.5 mt-1.5 space-y-1">
+                          {path.hops.map((h, i) => (
+                            <div key={i} className="flex justify-between text-[8.5px]">
+                              <span>Hop {i + 1} ({h.protocol}): {h.from} &rarr; {h.to}</span>
+                              <span className="text-accent truncate max-w-[140px]">{h.evidence}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
