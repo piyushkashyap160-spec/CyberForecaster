@@ -16,7 +16,31 @@ const SOCKET_URL = "http://127.0.0.1:8000";
 
 function WhyThisForecastPanel({ explanation, hostIp, selectedHost, selectedHostForecast, getStageBadgeStyle }) {
   const exp = explanation || selectedHostForecast?.explanation;
-  const threatProb = exp?.forecast?.threat_probability ?? (selectedHostForecast?.threat_probability ?? (selectedHostForecast?.threatLevel ?? 0.05));
+
+  if (!exp) {
+    return (
+      <div className="bg-base-surface border border-base-border rounded-lg p-5 font-mono-tech text-xs mt-5">
+        <div className="flex flex-wrap justify-between items-center border-b border-base-border pb-3 mb-3 gap-2">
+          <div className="flex items-center gap-2">
+            <Compass className="h-4 w-4 text-accent" />
+            <h3 className="font-semibold uppercase text-xs tracking-wider text-text-primary">
+              WHY THIS FORECAST? <span className="text-text-muted font-normal">/ EVIDENCE-GROUNDED ATTRIBUTION</span>
+            </h3>
+          </div>
+          <span className="text-text-muted text-[11px]">Target: <strong className="text-text-primary">{hostIp}</strong></span>
+        </div>
+        <div className="py-8 text-center text-text-muted space-y-1.5">
+          <Shield className="h-6 w-6 mx-auto text-severity-normal mb-1 opacity-80" />
+          <p className="font-semibold text-text-primary text-xs">NO ACTIVE THREAT FORECAST DETECTED</p>
+          <p className="text-[11px] text-text-muted max-w-lg mx-auto">
+            Host <span className="text-text-secondary">{hostIp}</span> is operating nominally in baseline monitoring state. Multi-tier evidence attribution activates upon anomalous temporal sequence forecasts.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const threatProb = exp?.forecast?.threat_probability ?? (selectedHostForecast?.threat_probability ?? (selectedHostForecast?.threatLevel ?? 0.0));
   const stage = exp?.forecast?.predicted_stage || selectedHostForecast?.predictedStage || selectedHost?.predictedStage || "Normal";
   const horizonSec = exp?.forecast?.forecast_horizon_seconds || 25;
 
@@ -208,39 +232,46 @@ function WhyThisForecastPanel({ explanation, hostIp, selectedHost, selectedHostF
 
         {/* Uncertainty */}
         <div className="bg-base-bg/40 border border-base-border rounded p-2.5 text-[10px]">
-          <span className="text-[9px] uppercase font-bold text-text-muted block mb-1">Predictive Uncertainty</span>
+          <span className="text-[9px] uppercase font-bold text-text-muted block mb-1">MC-Dropout Predictive Uncertainty</span>
           {uncertainty?.available ? (
             <div className="my-1 space-y-0.5">
               <div className="flex justify-between">
-                <span className="text-text-muted">MC-Dropout Std:</span>
-                <span className="font-bold text-text-primary">{uncertainty.std?.toFixed(3)}</span>
+                <span className="text-text-muted">Empirical Std:</span>
+                <span className="font-bold text-text-primary">σ = {uncertainty.std?.toFixed(4)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-text-muted">Band:</span>
+                <span className="text-text-muted">Empirical Spread:</span>
                 <span className="text-accent font-bold">[{Math.round((uncertainty.confidence_band?.[0] || 0)*100)}%, {Math.round((uncertainty.confidence_band?.[1] || 0)*100)}%]</span>
               </div>
             </div>
           ) : (
             <div className="text-text-muted my-1 italic">
-              Uncertainty unavailable
+              Predictive uncertainty unavailable
             </div>
           )}
-          <span className="text-[9px] text-text-muted block mt-1">10 stochastic passes</span>
+          <span className="text-[8px] text-text-muted block mt-1">10 stochastic forward passes</span>
         </div>
 
         {/* Audit Provenance */}
         <div className="bg-base-bg/40 border border-base-border rounded p-2.5 text-[10px]">
           <span className="text-[9px] uppercase font-bold text-text-muted block mb-1">Audit Provenance</span>
           <div className="my-1 space-y-0.5">
-            <div className="flex items-center gap-1 text-[9px] text-severity-normal font-bold">
-              <CheckCircle2 className="h-3 w-3" />
-              <span>{provenance?.blockchain_registered ? "Ledger Registered" : "Zero Leakage Verified"}</span>
+            <div className="flex items-center gap-1 text-[9px] font-bold">
+              {provenance?.blockchain_registered ? (
+                <span className="text-severity-normal flex items-center gap-1">
+                  <CheckCircle2 className="h-3 w-3" /> Ledger Registered
+                </span>
+              ) : (
+                <span className="text-text-muted flex items-center gap-1">
+                  <Clock className="h-3 w-3" /> Unregistered (Nominal)
+                </span>
+              )}
             </div>
             <div className="text-[9px] text-text-muted truncate font-mono">
               Hash: {provenance?.data_hash ? `${provenance.data_hash.slice(0, 14)}...` : "SHA-256 Validated"}
             </div>
           </div>
-          <span className="text-[8px] text-text-muted block mt-0.5 italic">0.0s benchmark lead-time baseline</span>
+          <span className="text-[8px] text-text-muted block mt-0.5 italic">Tamper-evident log; 0.0s lead-time baseline</span>
         </div>
       </div>
     </div>
@@ -260,16 +291,40 @@ export default function App() {
   const [loadingVerification, setLoadingVerification] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [latestForecast, setLatestForecast] = useState({});
+  const [lastForecastTime, setLastForecastTime] = useState({});
   const [worldModelStatus, setWorldModelStatus] = useState(null);
   const [mitigations, setMitigations] = useState([]);
   const [attackPaths, setAttackPaths] = useState([]);
   const [flowDetectorStatus, setFlowDetectorStatus] = useState(null);
   const [snortStatus, setSnortStatus] = useState(null);
+  const [blockchainStatus, setBlockchainStatus] = useState(null);
+  const [canonicalBenchmark, setCanonicalBenchmark] = useState(null);
   const [selectedAlertForDrawer, setSelectedAlertForDrawer] = useState(null);
 
   const [hostExplanation, setHostExplanation] = useState(null);
 
+  const selectedHost = hosts.find(h => h.ip === selectedHostIp) || (hosts.length > 0 ? hosts[0] : null);
+  const selectedHostForecast = (selectedHost ? latestForecast[selectedHost.ip] : null) || (selectedHost ? alerts.find(a => a.hostIp === selectedHost.ip) : null);
+
+  // Freshness calculation helpers
+  const formatDataAge = (ts) => {
+    if (!ts) return "Awaiting Live Data";
+    const diffSec = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+    if (isNaN(diffSec) || diffSec < 0) return "Just now";
+    if (diffSec < 5) return "Fresh (<5s)";
+    if (diffSec < 60) return `${diffSec}s ago`;
+    return `${Math.floor(diffSec / 60)}m ago`;
+  };
+
+  const isDataStale = (ts) => {
+    if (!ts) return false;
+    const diffSec = (Date.now() - new Date(ts).getTime()) / 1000;
+    return diffSec > 20;
+  };
+
+  // Host switching & explainability retrieval (clears stale state immediately)
   useEffect(() => {
+    setHostExplanation(null);
     if (selectedHostForecast?.explanation) {
       setHostExplanation(selectedHostForecast.explanation);
     } else if (selectedHostIp) {
@@ -278,7 +333,7 @@ export default function App() {
         .then(data => {
           if (data) setHostExplanation(data);
         })
-        .catch(() => {});
+        .catch(() => setHostExplanation(null));
     }
   }, [selectedHostIp, selectedHostForecast]);
 
@@ -307,6 +362,8 @@ export default function App() {
     fetchMitigations();
     fetchFlowDetectorStatus();
     fetchSnortStatus();
+    fetchBlockchainStatus();
+    fetchCanonicalBenchmark();
 
     // Setup Socket.io Connection
     socketRef.current = io(SOCKET_URL, {
@@ -342,10 +399,17 @@ export default function App() {
         ...prev,
         [forecast.hostIp]: forecast
       }));
+      setLastForecastTime(prev => ({
+        ...prev,
+        [forecast.hostIp]: Date.now()
+      }));
     });
 
     socketRef.current.on("forecast_alert", (alert) => {
-      setAlerts(prev => [alert, ...prev]);
+      setAlerts(prev => {
+        if (prev.some(a => a._id === alert._id)) return prev;
+        return [alert, ...prev].slice(0, 100);
+      });
       console.warn("Forecast Alert Triggered:", alert);
     });
 
@@ -366,6 +430,7 @@ export default function App() {
       fetchFlowDetectorStatus();
       fetchSnortStatus();
       fetchAttackPaths();
+      fetchBlockchainStatus();
     }, 3000);
 
     return () => {
@@ -440,6 +505,30 @@ export default function App() {
       }
     } catch (err) {
       console.error("Error fetching snort status:", err);
+    }
+  };
+
+  const fetchBlockchainStatus = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/blockchain/status`);
+      if (res.ok) {
+        const data = await res.json();
+        setBlockchainStatus(data);
+      }
+    } catch (err) {
+      console.error("Error fetching blockchain status:", err);
+    }
+  };
+
+  const fetchCanonicalBenchmark = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/benchmark/canonical`);
+      if (res.ok) {
+        const data = await res.json();
+        setCanonicalBenchmark(data);
+      }
+    } catch (err) {
+      console.error("Error fetching canonical benchmark:", err);
     }
   };
 
@@ -640,9 +729,7 @@ export default function App() {
     }));
   };
 
-  const selectedHost = hosts.find(h => h.ip === selectedHostIp) || (hosts.length > 0 ? hosts[0] : null);
-
-  const selectedHostForecast = (selectedHost ? latestForecast[selectedHost.ip] : null) || (selectedHost ? alerts.find(a => a.hostIp === selectedHost.ip) : null);
+// (selectedHost and selectedHostForecast declared at top of component)
   const currentWarmup = selectedHostForecast?.warmupStatus || {
     windowsCollected: worldModelStatus?.windows_collected || 0,
     windowsRequired: 10,
@@ -748,8 +835,13 @@ export default function App() {
             <span>SNORT: <strong className={snortStatus?.connected ? 'text-severity-normal' : 'text-text-secondary'}>{snortStatus?.status || 'NOT CONNECTED'}</strong></span>
           </div>
 
+          <div className="flex items-center gap-1.5 bg-base-bg border border-base-border px-2.5 py-1 rounded text-text-muted text-[10px]">
+            <Database className="h-3 w-3 text-accent" />
+            <span>LEDGER: <strong className={blockchainStatus?.connected ? 'text-severity-normal' : 'text-text-muted'}>{blockchainStatus?.connected ? 'ONLINE' : 'OFFLINE'}</strong></span>
+          </div>
+
           <div className="flex items-center gap-2 bg-base-bg border border-severity-normal/20 px-2.5 py-1 rounded text-severity-normal text-[10px]">
-            <div className="h-1.5 w-1.5 rounded-full bg-severity-normal pulse-indicator"></div>
+            <div className={`h-1.5 w-1.5 rounded-full ${currentWarmup.isReady ? "bg-severity-normal pulse-indicator" : "bg-accent"}`}></div>
             <span>WORLD MODEL {currentWarmup.status}</span>
           </div>
 
@@ -827,8 +919,13 @@ export default function App() {
                       Temporal World Model Forecaster
                     </h3>
                   </div>
-                  <div className="flex items-center gap-3 text-xs font-mono-tech">
+                  <div className="flex items-center gap-2.5 text-xs font-mono-tech">
                     <span className="text-text-muted">Target: <strong className="text-text-primary">{selectedHost?.ip || "Awaiting Assets"}</strong></span>
+                    {selectedHostForecast?.timestamp && (
+                      <span className={`px-2 py-0.5 rounded border text-[10px] ${isDataStale(selectedHostForecast.timestamp) ? "bg-severity-medium/10 text-severity-medium border-severity-medium/30" : "bg-base-bg text-text-secondary border-base-border"}`}>
+                        {isDataStale(selectedHostForecast.timestamp) ? `STALE (${formatDataAge(selectedHostForecast.timestamp)})` : formatDataAge(selectedHostForecast.timestamp)}
+                      </span>
+                    )}
                     <span className={`px-2 py-0.5 rounded border text-[10px] ${getStageBadgeStyle(selectedHostForecast?.predictedStage || selectedHost?.predictedStage || "Normal")}`}>
                       {selectedHostForecast?.predictedStage || selectedHost?.predictedStage || "Normal"}
                     </span>
@@ -872,26 +969,40 @@ export default function App() {
                         {selectedHostForecast?.predictedStage || selectedHost?.predictedStage || "Normal"}
                       </span>
                       <span className="text-[9px] text-text-muted block mt-0.5">
-                        Risk: {Math.round((selectedHostForecast?.threatLevel || selectedHost?.threatLevel || 0.05) * 100)}%
+                        Threat: {selectedHostForecast ? `${Math.round((selectedHostForecast.threat_probability ?? selectedHostForecast.threatLevel ?? 0) * 100)}%` : "0% (Nominal)"}
                       </span>
                     </div>
 
                     {/* Step 1 to 5 from rollout */}
                     {[1, 2, 3, 4, 5].map((stepIdx) => {
                       const stepData = selectedHostForecast?.rollout?.[stepIdx - 1];
-                      const stepRisk = stepData ? Math.round(stepData.attack_probability * 100) : 5;
-                      const stepStage = stepData ? (stepData.predicted_stage_id === 0 ? "Normal" : `Stage ${stepData.predicted_stage_id}`) : "Normal";
+                      const hasStep = !!stepData;
+                      const stepRisk = hasStep ? Math.round(stepData.attack_probability * 100) : null;
+                      const stepStage = hasStep ? (stepData.predicted_stage_id === 0 ? "Normal" : `Stage ${stepData.predicted_stage_id}`) : null;
 
                       return (
                         <div key={stepIdx} className="bg-base-surface border border-base-border rounded p-2.5">
                           <span className="text-[9px] text-text-muted block">HORIZON</span>
                           <span className="text-xs font-bold text-text-secondary mt-1 block">+{stepIdx * 5}s</span>
-                          <span className={`text-[10px] mt-1 block font-semibold truncate ${stepRisk > 50 ? "text-severity-critical" : "text-severity-normal"}`}>
-                            {stepStage}
-                          </span>
-                          <span className="text-[9px] text-text-muted block mt-0.5">
-                            Risk: {stepRisk}%
-                          </span>
+                          {hasStep ? (
+                            <>
+                              <span className={`text-[10px] mt-1 block font-semibold truncate ${stepRisk > 50 ? "text-severity-critical" : "text-severity-normal"}`}>
+                                {stepStage}
+                              </span>
+                              <span className="text-[9px] text-text-muted block mt-0.5">
+                                Threat: {stepRisk}%
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-[10px] mt-1 block text-text-muted italic">
+                                Awaiting
+                              </span>
+                              <span className="text-[9px] text-text-muted block mt-0.5">
+                                —
+                              </span>
+                            </>
+                          )}
                         </div>
                       );
                     })}
@@ -1134,8 +1245,9 @@ export default function App() {
                   <div className="grid grid-cols-5 gap-3 font-mono-tech text-xs">
                     {[1, 2, 3, 4, 5].map((stepIdx) => {
                       const stepData = selectedHostForecast?.rollout?.[stepIdx - 1];
-                      const stepRisk = stepData ? Math.round(stepData.attack_probability * 100) : 5;
-                      const stageName = stepData ? (stepData.predicted_stage_id === 0 ? "Normal" : `Stage ${stepData.predicted_stage_id}`) : "Normal";
+                      const hasStep = !!stepData;
+                      const stepRisk = hasStep ? Math.round(stepData.attack_probability * 100) : null;
+                      const stageName = hasStep ? (stepData.predicted_stage_id === 0 ? "Normal" : `Stage ${stepData.predicted_stage_id}`) : null;
 
                       return (
                         <div key={stepIdx} className="bg-base-bg border border-base-border rounded-lg p-3 flex flex-col justify-between">
@@ -1144,20 +1256,29 @@ export default function App() {
                               <span>HORIZON</span>
                               <span className="font-bold text-text-primary">+{stepIdx * 5}s</span>
                             </div>
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold inline-block ${getStageBadgeStyle(stageName)}`}>
-                              {stageName}
-                            </span>
-                            <div className="mt-2.5">
-                              <span className="text-[10px] text-text-muted block">Forecasted Risk:</span>
-                              <span className={`text-lg font-bold ${stepRisk > 50 ? "text-severity-critical" : "text-severity-normal"}`}>
-                                {stepRisk}%
-                              </span>
-                            </div>
+                            {hasStep ? (
+                              <>
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold inline-block ${getStageBadgeStyle(stageName)}`}>
+                                  {stageName}
+                                </span>
+                                <div className="mt-2.5">
+                                  <span className="text-[10px] text-text-muted block">Threat Probability:</span>
+                                  <span className={`text-lg font-bold ${stepRisk > 50 ? "text-severity-critical" : "text-severity-normal"}`}>
+                                    {stepRisk}%
+                                  </span>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="py-4 text-center text-text-muted">
+                                <span className="text-[10px] block italic">Awaiting Rollout</span>
+                                <span className="text-xs text-text-muted block mt-1">—</span>
+                              </div>
+                            )}
                           </div>
 
                           <div className="mt-3 pt-2 border-t border-base-border/50 text-[9px] text-text-muted space-y-0.5">
-                            <div>Uncertainty: <span className="text-text-secondary">Unavailable</span></div>
-                            <div>Step Index: <span className="text-text-secondary">{stepIdx}</span></div>
+                            <div>Horizon Step: <span className="text-text-secondary">+{stepIdx * 5}s</span></div>
+                            <div>Status: <span className="text-text-secondary">{hasStep ? "Projected" : "Standby"}</span></div>
                           </div>
                         </div>
                       );
@@ -1255,48 +1376,70 @@ export default function App() {
 
               {/* Canonical Benchmark Validation Summary */}
               <div className="bg-base-surface border border-base-border rounded-lg p-5 font-mono-tech text-xs">
-                <div className="flex items-center gap-2 border-b border-base-border pb-3 mb-3.5">
-                  <FileText className="h-4 w-4 text-severity-normal" />
-                  <h3 className="font-semibold uppercase text-xs tracking-wider text-text-secondary">
-                    Validated Benchmark Metrics
-                  </h3>
+                <div className="flex justify-between items-center border-b border-base-border pb-3 mb-3.5">
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-severity-normal" />
+                    <h3 className="font-semibold uppercase text-xs tracking-wider text-text-secondary">
+                      Validated Benchmark Metrics
+                    </h3>
+                  </div>
+                  <span className="px-1.5 py-0.5 rounded text-[8.5px] bg-accent/10 border border-accent/20 text-accent font-bold">
+                    OFFLINE HELD-OUT
+                  </span>
                 </div>
 
                 <div className="space-y-3">
                   <div>
-                    <span className="text-[10px] text-text-muted block">PRIMARY BENCHMARK RESULT</span>
-                    <span className="text-xs font-bold text-text-primary mt-0.5 block">
-                      Multi-Step Future State RMSE (K=1)
-                    </span>
-                    <div className="grid grid-cols-3 gap-1.5 mt-2 text-center text-[10px]">
+                    <div className="flex justify-between items-baseline mb-1">
+                      <span className="text-[10px] text-text-muted block">CANONICAL RMSE (K=1, +5s Horizon)</span>
+                      <span className="text-[8.5px] text-text-muted">CSE-CIC-IDS2018 Test Split</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5 mt-1 text-center text-[10px]">
                       <div className="bg-base-bg p-2 rounded border border-base-border">
                         <span className="text-text-muted block text-[8px]">PERSISTENCE</span>
                         <span className="font-bold text-severity-critical">
-                          {worldModelStatus?.canonical_rmse_reference?.K_step_1?.persistence_rmse ?? "11.74"}
+                          {canonicalBenchmark?.future_state_rmse_benchmarks?.horizon_K_1?.Persistence_Baseline ?? (worldModelStatus?.canonical_rmse_reference?.K_step_1?.persistence_rmse ?? "11.74")}
                         </span>
                       </div>
                       <div className="bg-base-bg p-2 rounded border border-base-border">
                         <span className="text-text-muted block text-[8px]">TRAIN MEAN</span>
                         <span className="font-bold text-text-secondary">
-                          {worldModelStatus?.canonical_rmse_reference?.K_step_1?.training_mean_rmse ?? "2.15"}
+                          {canonicalBenchmark?.future_state_rmse_benchmarks?.horizon_K_1?.Training_Mean_Baseline ?? (worldModelStatus?.canonical_rmse_reference?.K_step_1?.training_mean_rmse ?? "2.15")}
                         </span>
                       </div>
                       <div className="bg-base-bg p-2 rounded border border-severity-normal/30 bg-severity-normal/5">
                         <span className="text-severity-normal block text-[8px]">LSTM WORLD MODEL</span>
                         <span className="font-bold text-severity-normal">
-                          {worldModelStatus?.canonical_rmse_reference?.K_step_1?.lstm_rmse ?? "2.05"}
+                          {canonicalBenchmark?.future_state_rmse_benchmarks?.horizon_K_1?.Temporal_LSTM_World_Model ?? (worldModelStatus?.canonical_rmse_reference?.K_step_1?.lstm_rmse ?? "2.05")}
                         </span>
                       </div>
                     </div>
                   </div>
 
-                  <div className="pt-2 border-t border-base-border/50">
-                    <span className="text-[10px] text-text-muted block">VALIDATED LEAD TIME</span>
-                    <span className="text-xs font-semibold text-text-secondary mt-0.5 block">
-                      0.0s (Exact-Onset Detection)
-                    </span>
-                    <p className="text-[9px] text-text-muted mt-1 leading-relaxed">
-                      Zero genuine pre-onset alarms on preceding baseline. No unverified early-warning claims.
+                  {/* Multi-Horizon Reference */}
+                  <div className="bg-base-bg/60 p-2 rounded border border-base-border text-[9.5px] space-y-1">
+                    <span className="text-[8.5px] uppercase font-bold text-text-muted block">Extended Horizons (LSTM vs Persistence):</span>
+                    <div className="flex justify-between">
+                      <span className="text-text-muted">+15s (K=3):</span>
+                      <span>LSTM <strong className="text-severity-normal">2.35</strong> vs Persist <strong className="text-text-muted">12.00</strong></span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-text-muted">+25s (K=5):</span>
+                      <span>LSTM <strong className="text-severity-normal">2.16</strong> vs Persist <strong className="text-text-muted">12.01</strong></span>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-base-border/50 space-y-1.5">
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-[10px] text-text-muted">VALIDATED LEAD TIME:</span>
+                      <span className="text-xs font-bold text-severity-normal">0.0s (Exact-Onset)</span>
+                    </div>
+                    <div className="flex justify-between text-[9px] text-text-muted">
+                      <span>Pre-Onset Alarms on Baseline:</span>
+                      <span className="text-text-primary font-semibold">0 (Zero False Alarms)</span>
+                    </div>
+                    <p className="text-[8.5px] text-text-muted leading-relaxed italic pt-0.5">
+                      Static offline benchmark results on CSE-CIC-IDS2018 untouched test split; not modified by live inference telemetry.
                     </p>
                   </div>
                 </div>
@@ -1802,13 +1945,18 @@ export default function App() {
                 )}
               </div>
 
-              {/* Predicted Attack Path Box */}
+              {/* Observed Attack Path Box */}
               <div className="bg-base-surface border border-base-border rounded-lg p-5 font-mono-tech text-xs">
-                <div className="flex items-center gap-2 border-b border-base-border pb-3 mb-3">
-                  <Compass className="h-4 w-4 text-accent" />
-                  <h3 className="font-semibold uppercase text-xs tracking-wider text-text-secondary">
-                    Attack Path Reconstruction
-                  </h3>
+                <div className="flex justify-between items-center border-b border-base-border pb-3 mb-3">
+                  <div className="flex items-center gap-2">
+                    <Compass className="h-4 w-4 text-accent" />
+                    <h3 className="font-semibold uppercase text-xs tracking-wider text-text-secondary">
+                      Attack Path Reconstruction
+                    </h3>
+                  </div>
+                  <span className="px-1.5 py-0.5 rounded text-[8.5px] bg-accent/10 border border-accent/20 text-accent font-bold">
+                    OBSERVED TELEMETRY
+                  </span>
                 </div>
 
                 {attackPaths.length === 0 ? (
@@ -2184,15 +2332,30 @@ export default function App() {
                 </div>
               ) : (
                 <div className="text-xs space-y-3.5">
-                  <div className="flex items-center gap-3 bg-severity-normal/10 border border-severity-normal/20 p-3.5 rounded-lg text-severity-normal">
-                    <CheckCircle2 className="h-5 w-5 shrink-0" />
-                    <div>
-                      <h4 className="font-bold text-xs uppercase">Verification Complete</h4>
-                      <p className="text-[10px] text-severity-normal/80 mt-0.5">
-                        Cryptographic state matches local records. Prediction is authentic and tamper-proof.
-                      </p>
+                  {verificationResult.isAuthentic ? (
+                    <div className="flex items-center gap-3 bg-severity-normal/10 border border-severity-normal/20 p-3.5 rounded-lg text-severity-normal">
+                      <CheckCircle2 className="h-5 w-5 shrink-0" />
+                      <div>
+                        <h4 className="font-bold text-xs uppercase">Provenance Verification Complete</h4>
+                        <p className="text-[10px] text-severity-normal/80 mt-0.5">
+                          Cryptographic audit state matches local records. Forecast registration is authentic and tamper-evident.
+                        </p>
+                        <p className="text-[9px] text-text-muted mt-1 italic">
+                          Proves record registration provenance in audit ledger; does not assert forecast ground-truth correctness.
+                        </p>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="flex items-center gap-3 bg-severity-high/10 border border-severity-high/20 p-3.5 rounded-lg text-severity-high">
+                      <AlertTriangle className="h-5 w-5 shrink-0" />
+                      <div>
+                        <h4 className="font-bold text-xs uppercase">{verificationResult.status || "UNVERIFIED"}</h4>
+                        <p className="text-[10px] text-severity-high/90 mt-0.5">
+                          {verificationResult.message || "Forecast is not registered on-chain or local Ethereum node is offline."}
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="space-y-2 bg-base-bg/60 p-3.5 rounded-lg border border-base-border text-[11px]">
                     <div className="flex justify-between border-b border-base-border/50 pb-1.5">
@@ -2201,20 +2364,20 @@ export default function App() {
                     </div>
                     <div className="flex justify-between border-b border-base-border/50 pb-1.5">
                       <span className="text-text-muted">Host IP Address</span>
-                      <span className="text-text-secondary">{verificationResult.blockchain?.hostIp || verifyingAlert?.hostIp}</span>
+                      <span className="text-text-secondary">{verificationResult.blockchain?.hostIp || verificationResult.local?.hostIp || verifyingAlert?.hostIp}</span>
                     </div>
                     <div className="flex justify-between border-b border-base-border/50 pb-1.5">
                       <span className="text-text-muted">Forecasted Threat Stage</span>
-                      <span className="text-accent font-semibold">{verificationResult.blockchain?.predictedStage || verifyingAlert?.predictedStage}</span>
+                      <span className="text-accent font-semibold">{verificationResult.blockchain?.predictedStage || verificationResult.local?.predictedStage || verifyingAlert?.predictedStage}</span>
                     </div>
                     <div className="flex justify-between border-b border-base-border/50 pb-1.5">
                       <span className="text-text-muted">On-Chain Block Number</span>
-                      <span className="text-text-primary font-bold">{verificationResult.blockchain?.blockNumber || 1042}</span>
+                      <span className="text-text-primary font-bold">{verificationResult.blockchain?.blockNumber ?? "N/A (Offline / Unregistered)"}</span>
                     </div>
                     <div className="flex flex-col">
                       <span className="text-text-muted">Cryptographic Data Hash</span>
                       <span className="text-severity-normal mt-1 select-all break-all bg-base-surface p-1.5 rounded border border-base-border text-[10px]">
-                        {verificationResult.blockchain?.dataHash || verifyingAlert?.dataHash}
+                        {verificationResult.blockchain?.dataHash || verificationResult.local?.dataHash || verifyingAlert?.dataHash}
                       </span>
                     </div>
                   </div>

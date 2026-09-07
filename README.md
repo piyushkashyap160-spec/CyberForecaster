@@ -92,10 +92,28 @@ On the evaluated test timeline, the **Temporal LSTM detected attacks at the exac
 ```bash
 # 1. Install dependencies
 py -m pip install -r requirements.txt
+cd frontend && npm install && npm run build && cd ..
 
-# 2. Run unit & regression test suite (47 tests)
+# 2. Run complete test suite (106 tests, 100% pass)
 py -m pytest -q
 
-# 3. Inspect canonical benchmark results
+# 3. Pre-Demo Health Check
+py scripts/demo_health_check.py
+
+# 4. Inspect canonical benchmark results
 py -c "import json; print(json.dumps(json.load(open('experiments/results/canonical_benchmark_results.json')), indent=2))"
 ```
+
+---
+
+## 8. Live Demonstration Guide
+
+For the full step-by-step evaluator demonstration procedure, see:
+[`docs/demo_runbook.md`](docs/demo_runbook.md)
+
+1. **Backend:** `uvicorn backend.main:fastapi_app --host 127.0.0.1 --port 8000`
+2. **Frontend:** `cd frontend && npm run dev` (visit `http://localhost:5173`)
+3. **Traffic:** Start the Packet Collector on your active network interface.
+4. **Explainability:** Inspect the **WHY THIS FORECAST?** panel for gradient saliency, 23-D physical deviations, Snort/FastFlow sensor evidence, and MC-Dropout predictive uncertainty.
+5. **Topology:** Observe reconstructed multi-hop lateral attack paths.
+6. **Audit Ledger:** Cryptographically verify forecast provenance on-chain.

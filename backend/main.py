@@ -671,6 +671,36 @@ async def get_snort_status():
     return SNORT_CORRELATOR.get_status()
 
 
+@fastapi_app.get("/api/blockchain/status")
+async def get_blockchain_status():
+    connected = False
+    try:
+        connected = bool(w3.is_connected())
+    except Exception:
+        connected = False
+
+    contract = get_blockchain_contract() if connected else None
+    contract_addr = getattr(contract, "address", None) if contract else None
+    account_addr = getattr(BLOCKCHAIN_ACCOUNT, "address", None) if BLOCKCHAIN_ACCOUNT else None
+    current_block = None
+    if connected:
+        try:
+            current_block = int(w3.eth.block_number)
+        except Exception:
+            current_block = None
+
+    return {
+        "connected": connected,
+        "provider_url": WEB3_PROVIDER_URL,
+        "contract_deployed": contract is not None,
+        "contract_address": contract_addr,
+        "account": account_addr,
+        "current_block": current_block,
+        "network": "Hardhat Localhost (Chain ID: 31337)" if connected else "Disconnected",
+        "status": "CONNECTED" if (connected and contract is not None) else ("NODE_CONNECTED_NO_CONTRACT" if connected else "OFFLINE")
+    }
+
+
 @fastapi_app.get("/api/mitigations")
 async def get_mitigations():
     return list(MITIGATIONS_DB[:50])
@@ -953,7 +983,7 @@ async def get_forecast_explanation(host_ip: str):
         seq = np.array(HOST_TRAFFIC_HISTORY.get(host_ip, HOST_TRAFFIC_HISTORY.get("192.168.1.10", np.zeros((10, 23), dtype=np.float32))))
 
     host_info = HOSTS_DB.get(host_ip, {})
-    threat_prob = float(host_info.get("threatLevel", 0.05))
+    threat_prob = float(host_info.get("threatLevel", 0.0))
     predicted_stage = str(host_info.get("predictedStage", "Normal"))
     previous_stage = host_info.get("previousStage", None)
 
@@ -978,23 +1008,58 @@ async def get_forecast_explanation(host_ip: str):
 async def verify_blockchain_alert(alert_id: str):
     alert = next((a for a in ALERTS_DB if a["_id"] == alert_id), None)
     if not alert:
-        alert = ALERTS_DB[-1] if ALERTS_DB else {
-            "_id": alert_id,
-            "hostIp": "192.168.1.10",
-            "predictedStage": "Lateral Movement",
-            "confidence": 0.92,
-            "dataHash": hashlib.sha256(alert_id.encode()).hexdigest(),
-            "blockchainTxHash": "0x" + hashlib.sha256((alert_id + "tx").encode()).hexdigest()[:40]
+        return {
+            "alertId": alert_id,
+            "isAuthentic": False,
+            "status": "NOT_FOUND",
+            "message": f"Forecast alert {alert_id} not found in system records.",
+            "blockchain": None,
+            "local": None
+        }
+
+    if not w3.is_connected():
+        return {
+            "alertId": alert_id,
+            "isAuthentic": False,
+            "status": "NODE_OFFLINE",
+            "message": "Local Hardhat Ethereum node (127.0.0.1:8545) is currently offline. Verification requires an active local ledger.",
+            "blockchain": None,
+            "local": {
+                "hostIp": alert.get("hostIp"),
+                "predictedStage": alert.get("predictedStage"),
+                "dataHash": alert.get("dataHash"),
+                "txHash": alert.get("blockchainTxHash")
+            }
         }
 
     contract = get_blockchain_contract()
-    if contract and w3.is_connected():
-        try:
-            on_chain = contract.functions.getForecast(alert_id).call()
-            # Returns (hostIp, predictedStage, dataHash, timestamp, blockNumber)
+    if not contract:
+        return {
+            "alertId": alert_id,
+            "isAuthentic": False,
+            "status": "CONTRACT_NOT_DEPLOYED",
+            "message": "ForecastRegistry smart contract deployment not detected on local node.",
+            "blockchain": None,
+            "local": {
+                "hostIp": alert.get("hostIp"),
+                "predictedStage": alert.get("predictedStage"),
+                "dataHash": alert.get("dataHash"),
+                "txHash": alert.get("blockchainTxHash")
+            }
+        }
+
+    try:
+        on_chain = contract.functions.getForecast(alert_id).call()
+        # Returns (hostIp, predictedStage, dataHash, timestamp, blockNumber)
+        on_chain_hash = on_chain[2]
+        if on_chain_hash and len(on_chain_hash) > 0:
+            is_match = (on_chain_hash == alert.get("dataHash"))
             return {
                 "alertId": alert_id,
-                "isAuthentic": (on_chain[2] == alert.get("dataHash")),
+                "isAuthentic": is_match,
+                "status": "VERIFIED_AUTHENTIC" if is_match else "HASH_MISMATCH",
+                "message": "Cryptographic audit state matches local records. Forecast registration is authentic and tamper-evident." if is_match else "Cryptographic hash mismatch between local record and ledger.",
+                "disclaimer": "Proves record registration provenance in audit ledger; does not assert forecast ground-truth correctness.",
                 "blockchain": {
                     "hostIp": on_chain[0],
                     "predictedStage": on_chain[1],
@@ -1003,33 +1068,26 @@ async def verify_blockchain_alert(alert_id: str):
                     "blockNumber": int(on_chain[4])
                 },
                 "local": {
-                    "hostIp": alert["hostIp"],
-                    "predictedStage": alert["predictedStage"],
+                    "hostIp": alert.get("hostIp"),
+                    "predictedStage": alert.get("predictedStage"),
                     "dataHash": alert.get("dataHash"),
                     "txHash": alert.get("blockchainTxHash")
                 }
             }
-        except Exception as e:
-            logger.info(f"Contract call notice for {alert_id}: {e}")
-
-    tx_hash = alert.get("blockchainTxHash") or ("0x" + hashlib.sha256(alert_id.encode()).hexdigest()[:40])
-    data_hash = alert.get("dataHash") or hashlib.sha256(alert_id.encode()).hexdigest()
+    except Exception as e:
+        logger.info(f"Contract call notice for {alert_id}: {e}")
 
     return {
         "alertId": alert_id,
-        "isAuthentic": True,
-        "blockchain": {
-            "hostIp": alert["hostIp"],
-            "predictedStage": alert["predictedStage"],
-            "dataHash": data_hash,
-            "timestamp": int(time.time() * 1000),
-            "blockNumber": 1042
-        },
+        "isAuthentic": False,
+        "status": "UNREGISTERED",
+        "message": "Forecast record is not registered on the blockchain ledger. Only qualifying non-benign threat alerts are submitted on-chain.",
+        "blockchain": None,
         "local": {
-            "hostIp": alert["hostIp"],
-            "predictedStage": alert["predictedStage"],
-            "dataHash": data_hash,
-            "txHash": tx_hash
+            "hostIp": alert.get("hostIp"),
+            "predictedStage": alert.get("predictedStage"),
+            "dataHash": alert.get("dataHash"),
+            "txHash": alert.get("blockchainTxHash")
         }
     }
 
