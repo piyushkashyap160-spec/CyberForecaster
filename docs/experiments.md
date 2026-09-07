@@ -109,3 +109,128 @@ python experiments/evaluate_future_forecast.py
 - **Machine-readable Metrics:** `experiments/results/phase2_forecast_evaluation.json`
 - **Forecast-vs-Reality Data:** `experiments/results/forecast_vs_reality.json` & `.csv`
 - **Offline Curves Plot:** `experiments/results/forecast_vs_reality_curves.png`
+
+---
+
+## 7. Phase 3: Evidence-Grounded Forecast Explainability
+
+### Core Research Question
+*"Why did CyberForecaster make this forecast?"*
+
+Phase 3 implements an evidence-grounded explainability architecture connecting 8 verifiable dimensions without LLM hallucination or fabricated telemetry:
+1. **Model Evidence:** Real-time Gradient Saliency Attribution ($\frac{\partial P(\text{Attack})}{\partial S_{\tau, f}}$) evaluated across all 10 temporal sequence windows ($t-45\text{s} \dots t$) with explicit attribution targets and relative timestep indicators (`@ t-5s`, `@ t-10s`).
+2. **Network Telemetry Evidence:** 23-D physical features vs recent-history baselines, reporting percentage deviation and elevation status (`elevated`, `suppressed`, `nominal`).
+3. **Security Sensor Evidence:** Strict distinction between FastFlowDetector (Bot-vs-Benign per-flow classifier suspicion, not proof of attack) and Snort (5-tuple and timestamp-correlated signature alerts).
+4. **Attack Path Evidence:** Correlated multi-hop progression chains ($A \to B \to C$) from the real-time reconstruction engine.
+5. **Stage Transition Dynamics:** Mitre ATT&CK stage progression ($S_{t-1} \to S_t$) reported only when historical state genuinely exists.
+6. **Predictive Uncertainty:** 10-sample Monte Carlo Dropout (`forward_with_mc_dropout`) yielding empirical predictive standard deviation and confidence bands, rigorously decoupled from point threat probabilities.
+7. **Blockchain & Audit Provenance:** SHA-256 data hash and transaction verification on the Hardhat ledger.
+8. **Scientific Limitations:** Explicit disclosures regarding the 0.0s pre-onset benchmark lead time.
+
+### Key Conceptual Distinctions
+- **Threat Probability vs. Predictive Uncertainty:** Threat Probability is the point estimate $P(\text{Attack} \mid S_{t-9 \dots t}) \in [0, 1]$. Predictive Uncertainty is the empirical dispersion (standard deviation) across stochastic dropout perturbations quantifying epistemic model uncertainty.
+- **Future-State Forecast vs. Early-Warning Lead Time:** A future-state forecast predicts the multi-step state trajectory $\hat{S}_{t+K}$ and attack risk forward in time. Early-warning lead time measures the advance interval between detection and ground-truth attack onset. On the CSE-CIC-IDS2018 benchmark, the validated pre-onset lead time is 0.0s (exact-onset detection).
+- **Model Attribution vs. Sensor Evidence:** Gradient saliency identifies which input dimensions influenced the neural network's loss gradient. Sensor evidence (Snort rules, FastFlowDetector anomalies) represents external ground-truth detections from signature and flow inspection engines.
+
+### Canonical Explanation Payload Example
+```json
+{
+  "forecast_id": "4b726488-829d-476c-8f1b-3efb7c63db44",
+  "timestamp": "2026-09-07T20:15:05.123456+00:00",
+  "host_ip": "192.168.1.15",
+  "forecast": {
+    "attack_probability": 0.91,
+    "threat_probability": 0.91,
+    "predicted_stage": "Lateral Movement",
+    "forecast_horizon_seconds": 25,
+    "severity": "CRITICAL"
+  },
+  "narrative_summary": "CyberForecaster projected Lateral Movement for host 192.168.1.15 with a Threat Probability of 91%. Gradient saliency identifies syn_ratio (t-5s), unique_dst_ports (t-10s) as primary model risk drivers. Observed network telemetry shows elevated SYN Flag Ratio (+812.3%) against recent baseline. A temporally correlated Snort alert (SID 1000003: COMMUNITY WEB-MISC Lateral Movement RPC probe) was verified. FastFlowDetector flagged the corresponding flow with suspicion score 0.94. Active multi-hop attack path path-192.168.1.10-192.168.1.24-17881 was reconstructed across 2 hops. Forecast indicates a transition from Reconnaissance toward Lateral Movement. Predictive uncertainty was estimated at std=0.034 across 10 MC-dropout passes.",
+  "model_evidence": {
+    "method": "Gradient Saliency Attribution (Fast Real-Time)",
+    "target": "attack_probability",
+    "top_temporal_features": [
+      {
+        "feature": "syn_ratio",
+        "timestep": "t-5s",
+        "label": "syn_ratio @ t-5s",
+        "attribution": 0.38421,
+        "direction": "increases_risk"
+      },
+      {
+        "feature": "unique_dst_ports",
+        "timestep": "t-10s",
+        "label": "unique_dst_ports @ t-10s",
+        "attribution": 0.29104,
+        "direction": "increases_risk"
+      }
+    ]
+  },
+  "telemetry_evidence": [
+    {
+      "feature": "syn_ratio",
+      "feature_label": "SYN Flag Ratio",
+      "current_value": 0.92,
+      "baseline_value": 0.10,
+      "deviation_pct": 820.0,
+      "direction": "elevated",
+      "source": "NetworkState"
+    }
+  ],
+  "sensor_evidence": {
+    "fastflow": {
+      "available": true,
+      "score": 0.94,
+      "label": "Bot / Suspicious",
+      "disclaimer": "FastFlowDetector provides flow anomaly suspicion and does not independently constitute proof of attack."
+    },
+    "snort": {
+      "available": true,
+      "sid": "1000003",
+      "message": "COMMUNITY WEB-MISC Lateral Movement RPC probe",
+      "timestamp": "2026-09-07T20:15:00Z"
+    }
+  },
+  "stage_transition": {
+    "previous_stage": "Reconnaissance",
+    "predicted_stage": "Lateral Movement",
+    "transition_detected": true,
+    "summary": "Forecast indicates a transition from Reconnaissance toward Lateral Movement."
+  },
+  "attack_path": {
+    "available": true,
+    "path_id": "path-192.168.1.10-192.168.1.24-17881",
+    "hop_count": 2,
+    "severity": "HIGH",
+    "summary": "Forecast is associated with an observed multi-hop progression (192.168.1.10 -> 192.168.1.24, 2 hops)."
+  },
+  "uncertainty": {
+    "available": true,
+    "method": "MC-Dropout (10 stochastic forward passes)",
+    "mean_probability": 0.908,
+    "std": 0.034,
+    "confidence_band": [0.841, 0.975]
+  },
+  "provenance": {
+    "model": "TemporalLSTMWorldModel (23-D, 128 hidden, 2 layers)",
+    "scaler": "Train-Fitted StateScaler",
+    "data_hash": "d83b54a85c8e1e7fa890e0b3c678a1",
+    "blockchain_registered": true,
+    "blockchain_tx": "0x7b58c93a8e9d1234abcd",
+    "evidence_sources": [
+      "TemporalLSTM",
+      "NetworkState",
+      "FastFlowDetector",
+      "Snort",
+      "AttackPathReconstructor",
+      "MC-Dropout",
+      "BlockchainLedger"
+    ]
+  },
+  "limitations": [
+    "Canonical CSE-CIC-IDS2018 benchmark evaluates future-state trajectory with 0.0s validated pre-onset lead time (exact-onset detection).",
+    "FastFlowDetector provides per-flow anomaly suspicion and does not independently constitute proof of attack.",
+    "MC-Dropout provides an empirical model uncertainty band and is not a certified statistical confidence interval."
+  ]
+}
+```

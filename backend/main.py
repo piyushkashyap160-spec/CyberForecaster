@@ -30,6 +30,7 @@ from monitoring.attack_path_reconstructor import AttackPathReconstructor
 from models.lstm_world_model import TemporalLSTMWorldModel
 from models.temporal_gnn_world_model import TemporalGNNWorldModel
 from forecasting.rollout import perform_k_step_rollout
+from explainability import ForecastExplainer
 
 import pandas as pd
 
@@ -41,6 +42,7 @@ LIVE_COLLECTOR = LiveNetworkCollector(flow_timeout=5.0)
 FAST_FLOW_DETECTOR = FastFlowDetector()
 SNORT_CORRELATOR = SnortCorrelator()
 ATTACK_PATH_RECONSTRUCTOR = AttackPathReconstructor()
+FORECAST_EXPLAINER: Optional[ForecastExplainer] = None
 
 # Initialize Socket.io AsyncServer
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
@@ -169,7 +171,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def load_models_and_config():
 
-    global CONFIG, MODEL_LSTM, MODEL_GNN, SCALER
+    global CONFIG, MODEL_LSTM, MODEL_GNN, SCALER, FORECAST_EXPLAINER
     config_path = "config.yaml"
     if os.path.exists(config_path):
         with open(config_path, "r") as f:
@@ -215,6 +217,14 @@ def load_models_and_config():
     else:
         logger.warning(f"LSTM weights file {lstm_weights} not found. Model running with initialized weights.")
     MODEL_LSTM.eval()
+
+    # Initialize Evidence-Grounded Forecast Explainer
+    try:
+        FORECAST_EXPLAINER = ForecastExplainer(MODEL_LSTM, SCALER)
+        logger.info("ForecastExplainer engine initialized with active model and scaler.")
+    except Exception as explainer_err:
+        logger.warning(f"Could not initialize ForecastExplainer: {explainer_err}")
+        FORECAST_EXPLAINER = None
 
 
 def seed_hosts_and_history():
@@ -351,6 +361,35 @@ async def live_collector_event_pump():
                         stage_id = int(torch.argmax(stage_logits, dim=1).cpu().numpy()[0])
                         stage_name = map_stage_id_to_name(stage_id)
                         mitre_techs = get_mitre_techniques(stage_name)
+                        prev_stage = HOSTS_DB.get(target_ip, {}).get("predictedStage", "Normal")
+
+                        # On-chain forecast registration if alert triggered
+                        alert_id = str(uuid.uuid4())
+                        data_hash = hashlib.sha256(f"{target_ip}-{stage_name}-{prob:.4f}".encode()).hexdigest()
+                        tx_hash = None
+                        if prob >= 0.50 and stage_name != "Normal":
+                            tx_hash = log_forecast_on_chain(alert_id, target_ip, stage_name, data_hash)
+
+                        # Generate canonical evidence-grounded explanation
+                        explanation = None
+                        if FORECAST_EXPLAINER is not None:
+                            try:
+                                explanation = FORECAST_EXPLAINER.generate_explanation(
+                                    sequence=seq,
+                                    host_ip=target_ip,
+                                    predicted_stage=stage_name,
+                                    threat_probability=prob,
+                                    forecast_horizon_seconds=25,
+                                    previous_stage=prev_stage,
+                                    snort_match=snort_match,
+                                    fast_detection=fast_det,
+                                    active_paths=active_paths,
+                                    data_hash=data_hash,
+                                    blockchain_tx=tx_hash,
+                                    uncertainty_samples=10
+                                )
+                            except Exception as exp_err:
+                                logger.warning(f"Error generating explanation in live pump: {exp_err}")
 
                         raw_rollout = perform_k_step_rollout(MODEL_LSTM, SCALER, seq, k_steps=5, device=DEVICE)
                         rollout_sanitized = []
@@ -366,9 +405,11 @@ async def live_collector_event_pump():
                         forecast_payload = {
                             "hostIp": target_ip,
                             "threatLevel": prob,
+                            "threat_probability": round(prob, 4),
+                            "attack_probability": round(prob, 4),
                             "predictedStage": stage_name,
                             "confidence": round(1.0 - prob if stage_name == "Normal" else prob, 4),
-                            "uncertainty": "Uncertainty unavailable",
+                            "uncertainty": explanation.get("uncertainty") if explanation else "Uncertainty unavailable",
                             "mitreTechniques": mitre_techs,
                             "timestamp": datetime.now(timezone.utc).isoformat(),
                             "warmupStatus": {
@@ -378,10 +419,12 @@ async def live_collector_event_pump():
                                 "status": "READY"
                             },
                             "rollout": rollout_sanitized,
-                            "current_state_vector": [float(x) for x in live_vector_23d]
+                            "current_state_vector": [float(x) for x in live_vector_23d],
+                            "explanation": explanation
                         }
 
                         if target_ip in HOSTS_DB:
+                            HOSTS_DB[target_ip]["previousStage"] = prev_stage
                             HOSTS_DB[target_ip]["threatLevel"] = prob
                             HOSTS_DB[target_ip]["predictedStage"] = stage_name
                             HOSTS_DB[target_ip]["lastSeen"] = datetime.now(timezone.utc).isoformat()
@@ -390,24 +433,23 @@ async def live_collector_event_pump():
 
                         # Check genuine threat alert condition (only on real non-benign predictions)
                         if prob >= 0.50 and stage_name != "Normal":
-                            alert_id = str(uuid.uuid4())
                             severity = "CRITICAL" if prob >= 0.85 else ("HIGH" if prob >= 0.70 else "MEDIUM")
-                            data_hash = hashlib.sha256(f"{target_ip}-{stage_name}-{prob:.4f}".encode()).hexdigest()
-                            tx_hash = log_forecast_on_chain(alert_id, target_ip, stage_name, data_hash)
-
                             alert_entry = {
                                 "_id": alert_id,
                                 "hostIp": target_ip,
                                 "severity": severity,
                                 "predictedStage": stage_name,
+                                "threat_probability": round(prob, 4),
+                                "attack_probability": round(prob, 4),
                                 "confidence": round(prob, 4),
-                                "uncertainty": "Uncertainty unavailable",
+                                "uncertainty": explanation.get("uncertainty") if explanation else "Uncertainty unavailable",
                                 "mitreTechniques": mitre_techs,
                                 "timestamp": datetime.now(timezone.utc).isoformat(),
                                 "blockchainTxHash": tx_hash,
                                 "dataHash": data_hash,
                                 "actionTaken": "PENDING_REVIEW",
-                                "snortEvidence": snort_match
+                                "snortEvidence": snort_match,
+                                "explanation": explanation
                             }
                             ALERTS_DB.append(alert_entry)
                             if len(ALERTS_DB) > 100:
@@ -797,6 +839,7 @@ async def run_inference(req: InferenceRequest):
     stage_id = int(torch.argmax(stage_logits, dim=1).cpu().numpy()[0])
     stage_name = map_stage_id_to_name(stage_id)
     mitre_techs = get_mitre_techniques(stage_name)
+    prev_stage = HOSTS_DB.get(ip, {}).get("predictedStage", "Normal")
 
     raw_rollout = perform_k_step_rollout(MODEL_LSTM, SCALER, seq, k_steps=5, device=DEVICE)
     rollout_sanitized = []
@@ -809,52 +852,126 @@ async def run_inference(req: InferenceRequest):
             "state_dict": {k: float(v) for k, v in step_item.get("state_dict", {}).items()}
         })
 
+    # Cryptographic Data Hash for Blockchain verification
+    data_string = f"{ip}:{stage_name}:{prob:.4f}"
+    data_hash = hashlib.sha256(data_string.encode('utf-8')).hexdigest()
+    tx_hash = None
+    alert_id = str(uuid.uuid4())
+
+    # Log to local blockchain if active and alert condition met
+    if prob >= 0.50 and stage_name != "Normal":
+        tx_hash = log_forecast_on_chain(alert_id, ip, stage_name, data_hash)
+
+    # Generate canonical evidence-grounded explanation
+    active_paths = ATTACK_PATH_RECONSTRUCTOR.get_active_paths()
+    explanation = None
+    if FORECAST_EXPLAINER is not None:
+        try:
+            explanation = FORECAST_EXPLAINER.generate_explanation(
+                sequence=seq,
+                host_ip=ip,
+                predicted_stage=stage_name,
+                threat_probability=prob,
+                forecast_horizon_seconds=25,
+                previous_stage=prev_stage,
+                snort_match=None,
+                fast_detection=None,
+                active_paths=active_paths,
+                data_hash=data_hash,
+                blockchain_tx=tx_hash,
+                uncertainty_samples=10
+            )
+        except Exception as exp_err:
+            logger.warning(f"Error generating explanation in /api/inference: {exp_err}")
+
     # Update host state in memory
     if ip in HOSTS_DB:
+        HOSTS_DB[ip]["previousStage"] = prev_stage
         HOSTS_DB[ip]["threatLevel"] = round(prob, 4)
         HOSTS_DB[ip]["predictedStage"] = stage_name
         HOSTS_DB[ip]["lastSeen"] = datetime.now(timezone.utc).isoformat()
 
     forecast_payload = {
         "hostIp": ip,
+        "threatLevel": prob,
+        "threat_probability": round(prob, 4),
+        "attack_probability": round(prob, 4),
         "predictedStage": stage_name,
         "confidence": round(prob, 4),
+        "uncertainty": explanation.get("uncertainty") if explanation else "Uncertainty unavailable",
         "mitreTechniques": mitre_techs,
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "rollout": rollout_sanitized
+        "rollout": rollout_sanitized,
+        "explanation": explanation
     }
-
 
     # Emit socket update
     await sio.emit("forecast_update", forecast_payload)
 
     # Trigger alert if probability >= 0.50
     if prob >= 0.50 and stage_name != "Normal":
-        alert_id = str(uuid.uuid4())
         severity = "CRITICAL" if prob >= 0.85 else ("HIGH" if prob >= 0.70 else "MEDIUM")
-
-        # Cryptographic Data Hash for Blockchain verification
-        data_string = f"{ip}:{stage_name}:{prob:.4f}"
-        data_hash = hashlib.sha256(data_string.encode('utf-8')).hexdigest()
-
-        # Log to local blockchain if active
-        tx_hash = log_forecast_on_chain(alert_id, ip, stage_name, data_hash)
 
         alert_entry = {
             "_id": alert_id,
             "hostIp": ip,
             "severity": severity,
             "predictedStage": stage_name,
+            "threat_probability": round(prob, 4),
+            "attack_probability": round(prob, 4),
             "confidence": round(prob, 4),
+            "uncertainty": explanation.get("uncertainty") if explanation else "Uncertainty unavailable",
             "mitreTechniques": mitre_techs,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "blockchainTxHash": tx_hash,
-            "dataHash": data_hash
+            "dataHash": data_hash,
+            "explanation": explanation
         }
         ALERTS_DB.append(alert_entry)
         await sio.emit("forecast_alert", alert_entry)
 
     return forecast_payload
+
+
+@fastapi_app.get("/api/forecasts/explain/{host_ip}")
+async def get_forecast_explanation(host_ip: str):
+    """
+    Returns an evidence-grounded explanation for the specified host.
+    Connects model attribution, telemetry evidence, sensors, attack path, and uncertainty.
+    """
+    if FORECAST_EXPLAINER is None:
+        raise HTTPException(status_code=503, detail="Forecast explainer engine is not initialized.")
+
+    if host_ip in LIVE_WINDOW_HISTORY and len(LIVE_WINDOW_HISTORY[host_ip]) >= 10:
+        seq = np.array(LIVE_WINDOW_HISTORY[host_ip][-10:], dtype=np.float32)
+    elif host_ip in HOST_TRAFFIC_HISTORY:
+        seq = np.array(HOST_TRAFFIC_HISTORY[host_ip], dtype=np.float32)
+    elif "192.168.1.10" in HOST_TRAFFIC_HISTORY:
+        seq = np.array(HOST_TRAFFIC_HISTORY["192.168.1.10"], dtype=np.float32)
+    else:
+        seed_hosts_and_history()
+        seq = np.array(HOST_TRAFFIC_HISTORY.get(host_ip, HOST_TRAFFIC_HISTORY.get("192.168.1.10", np.zeros((10, 23), dtype=np.float32))))
+
+    host_info = HOSTS_DB.get(host_ip, {})
+    threat_prob = float(host_info.get("threatLevel", 0.05))
+    predicted_stage = str(host_info.get("predictedStage", "Normal"))
+    previous_stage = host_info.get("previousStage", None)
+
+    active_paths = ATTACK_PATH_RECONSTRUCTOR.get_active_paths()
+
+    explanation = FORECAST_EXPLAINER.generate_explanation(
+        sequence=seq,
+        host_ip=host_ip,
+        predicted_stage=predicted_stage,
+        threat_probability=threat_prob,
+        forecast_horizon_seconds=25,
+        previous_stage=previous_stage,
+        snort_match=None,
+        fast_detection=None,
+        active_paths=active_paths,
+        uncertainty_samples=10
+    )
+    return explanation
 
 
 @fastapi_app.get("/api/blockchain/verify/{alert_id}")
