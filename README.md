@@ -59,7 +59,7 @@ The canonical benchmark was evaluated across the full multi-hour stream of `Frid
 ## 4. Multi-Step Future State Prediction ($X_{t+K}$ RMSE)
 
 ### Primary Scientific Finding:
-On the evaluated real CIC-IDS2018 test data, the **Temporal LSTM achieved a $K=1$ future-state RMSE of 2.0549, compared with 11.7373 for persistence and 2.1498 for the training-mean baseline**, maintaining superior predictive accuracy across all evaluated forward simulation horizons:
+The Temporal LSTM substantially outperforms the persistence baseline across all evaluated forward simulation horizons, while the training-mean baseline remains competitive:
 
 | Prediction Horizon ($K$) | Projected Advance | Naive Persistence ($X_{t+K} = X_t$) | Training-Mean Baseline ($\bar{X}_{\text{train}}$) | Temporal LSTM World Model |
 | :---: | :---: | :---: | :---: | :---: |

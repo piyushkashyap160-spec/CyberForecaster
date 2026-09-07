@@ -516,11 +516,17 @@ def main():
         "horizon_evaluations": horizon_results,
         "lead_time_summary": {
             "status": "verified_exact_onset",
-            "mean_lead_time_seconds": lead_time_res["mean_lead_time_seconds"],
-            "pre_onset_warnings": lead_time_res["pre_onset_warnings"],
+            "mean_lead_time_seconds": 0.0,
+            "validated_mean_lead_time_seconds": 0.0,
+            "validated_pre_onset_warnings": 0,
+            "validated_exact_onset_detections": lead_time_res["exact_onset_detections"],
+            "pre_onset_warnings": 0,
             "exact_onset_detections": lead_time_res["exact_onset_detections"],
+            "exploratory_candidate_lead_time_seconds": lead_time_res["mean_lead_time_seconds"],
+            "exploratory_candidate_warnings": lead_time_res["pre_onset_warnings"],
             "post_onset_detections": lead_time_res["post_onset_detections"],
             "total_test_episodes": lead_time_res["total_episodes"],
+            "lead_time_interpretation": "One exploratory candidate occurred 10.0s before an attack episode, but it was not counted as validated pre-onset foresight under the final onset-aligned evaluation criteria. Validated pre-onset lead time is strictly 0.0s.",
             "scientific_conclusion": "The current CIC-IDS2018 evaluation validates future-state forecasting but does not yet establish positive attack lead time because the evaluated attack episodes did not contain validated pre-onset detections."
         },
         "core_scientific_answer": {
