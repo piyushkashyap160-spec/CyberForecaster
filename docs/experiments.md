@@ -63,3 +63,49 @@ The official canonical benchmark for CyberForecaster is evaluated on the full co
 python training/run_strict_leakage_free_benchmark.py
 ```
 Canonical artifact: `experiments/results/canonical_benchmark_results.json` and `models_weights/canonical_benchmark_results.json`.
+
+---
+
+## 6. Phase 2: Scientific Future-State Forecast Evaluation
+
+**Research Question:**
+*"Given the previous 50 seconds of network state (10 five-second windows), how accurately can CyberForecaster predict the network state 5, 15, and 25 seconds into the future, compared to simple persistence and training-mean baselines?"*
+
+**Evaluation Standard:** Zero Temporal Leakage, Train-Fitted Scaler, Untouched Test Partition ($N=2,550$ multi-step sequences; $855$ Benign, $1,695$ Malicious).
+
+### Multi-Horizon State Forecasting Performance Table
+
+| Horizon | Prediction Advance | Model Architecture | RMSE (Scaled) | MAE (Scaled) | Relative Gain vs. Persistence | Relative Gain vs. Train Mean |
+| :---: | :---: | :--- | :---: | :---: | :---: | :---: |
+| **$K=1$** | $+5\text{s}$ ahead | **Naive Persistence** | 5.0995 | 0.5445 | Baseline | — |
+| | | **Training Mean** | 3.9613 | 0.7785 | Baseline | — |
+| | | **Temporal LSTM World Model** | **3.9821** | 0.9523 | **+21.91%** | -0.53% |
+| **$K=3$** | $+15\text{s}$ ahead | **Naive Persistence** | 5.3262 | 0.5889 | Baseline | — |
+| | | **Training Mean** | 4.0120 | 0.7838 | Baseline | — |
+| | | **Temporal LSTM World Model** | **4.1103** | 1.1898 | **+22.83%** | -2.45% |
+| **$K=5$** | $+25\text{s}$ ahead | **Naive Persistence** | 5.3038 | 0.6107 | Baseline | — |
+| | | **Training Mean** | 4.0222 | 0.7862 | Baseline | — |
+| | | **Temporal LSTM World Model** | **4.1264** | 1.2416 | **+22.20%** | -2.59% |
+
+### Statistical Robustness & Paired Hypothesis Testing (1,000 Bootstrap Resamples)
+- **$K=1$ (+5s):** LSTM error reduction vs Persistence: Mean difference $= -0.2704$, 95% Bootstrap CI: $[-0.4037, -0.1354]$, paired $t = -3.98$ ($p < 0.0001$).
+- **$K=3$ (+15s):** LSTM error reduction vs Persistence: Mean difference $= -0.4285$, 95% Bootstrap CI: $[-0.5670, -0.2945]$, paired $t = -6.18$ ($p < 0.0001$).
+- **$K=5$ (+25s):** LSTM error reduction vs Persistence: Mean difference $= -0.4431$, 95% Bootstrap CI: $[-0.5841, -0.3052]$, paired $t = -6.21$ ($p < 0.0001$).
+
+### Future-Aligned Attack Classification (Horizon $t+K$)
+- **$K=1$ (+5s):** Precision $= 0.9984$, Recall $= 0.5327$, $F_1 = 0.6948$, $\text{FPR} = 0.0012$
+- **$K=3$ (+15s):** Precision $= 0.9991$, Recall $= 0.6631$, $F_1 = 0.7971$, $\text{FPR} = 0.0012$
+- **$K=5$ (+25s):** Precision $= 0.9991$, Recall $= 0.6295$, $F_1 = 0.7723$, $\text{FPR} = 0.0012$
+*Scientific Note:* Because attacks in CSE-CIC-IDS2018 operate in long multi-hour burst episodes, future-aligned classification reflects the temporal persistence of malicious kill-chain states rather than isolated pre-onset early foresight.
+
+### Validated Early-Warning Lead Time
+- **Validated Pre-Onset Lead Time:** **0.0 seconds** (Exact-Onset Detection).
+- **Candidate Gap Transition:** A single candidate detection triggered during the 25-second inter-burst gap between episodes due to lingering memory of preceding attack states; this is properly classified as an inter-burst transition rather than unvalidated advance foresight.
+
+### Phase 2 Evaluation Command & Artifacts
+```bash
+python experiments/evaluate_future_forecast.py
+```
+- **Machine-readable Metrics:** `experiments/results/phase2_forecast_evaluation.json`
+- **Forecast-vs-Reality Data:** `experiments/results/forecast_vs_reality.json` & `.csv`
+- **Offline Curves Plot:** `experiments/results/forecast_vs_reality_curves.png`

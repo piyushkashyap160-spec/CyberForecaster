@@ -96,8 +96,15 @@ def compute_forecast_lead_time(
                 t_onset = _to_timestamp_seconds(timestamps[onset_idx])
                 t_trigger = _to_timestamp_seconds(timestamps[trigger_idx])
                 if trigger_idx < onset_idx:
-                    lead_sec = max(0.0, float(t_onset - t_trigger))
-                    pre_onset_count += 1
+                    delta_sec = t_onset - t_trigger
+                    max_allowed_delta = 10 * window_seconds + 1.0
+                    if delta_sec <= max_allowed_delta:
+                        lead_sec = max(0.0, float(delta_sec))
+                        pre_onset_count += 1
+                    else:
+                        # Non-contiguous boundary jump across split blocks: not an adjacent pre-onset trigger
+                        lead_sec = 0.0
+                        exact_onset_count += 1
                 elif trigger_idx == onset_idx:
                     lead_sec = 0.0
                     exact_onset_count += 1

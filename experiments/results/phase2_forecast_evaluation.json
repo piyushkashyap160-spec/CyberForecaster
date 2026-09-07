@@ -1,0 +1,509 @@
+{
+  "evaluation_title": "CyberForecaster Phase 2 Scientific Future-State Forecast Evaluation",
+  "timestamp_utc": "2026-09-07T14:13:29.242236+00:00",
+  "canonical_configuration": {
+    "dataset": "CSE-CIC-IDS2018",
+    "source_file": "Friday-02-03-2018_TrafficForML_CICFlowMeter.csv",
+    "evaluated_flows": 100000,
+    "window_duration_seconds": 5.0,
+    "sequence_length_windows": 10,
+    "historical_context_seconds": 50.0,
+    "forecast_horizons": [
+      {
+        "step": 1,
+        "seconds_ahead": 5
+      },
+      {
+        "step": 3,
+        "seconds_ahead": 15
+      },
+      {
+        "step": 5,
+        "seconds_ahead": 25
+      }
+    ],
+    "feature_dimension": 23,
+    "model_weights": "models_weights/lstm_world_model.pt",
+    "scaler_path": "models_weights/scaler.joblib",
+    "random_seed": 42,
+    "device": "cpu"
+  },
+  "dataset_split_summary": {
+    "total_states": 8640,
+    "split_blocks": {
+      "train_sequences": 4250,
+      "val_sequences": 1700,
+      "test_sequences": 2550,
+      "test_benign": 855,
+      "test_malicious": 1695
+    },
+    "zero_temporal_leakage": true,
+    "scaler_discipline": "fit_on_train_split_only"
+  },
+  "horizon_evaluations": {
+    "horizon_1_step_5s": {
+      "horizon_step": 1,
+      "seconds_ahead": 5,
+      "metrics_scaled": {
+        "persistence": {
+          "rmse": 5.0995,
+          "mae": 0.5445
+        },
+        "training_mean": {
+          "rmse": 3.9613,
+          "mae": 0.7785
+        },
+        "temporal_lstm": {
+          "rmse": 3.9821,
+          "mae": 0.9523
+        }
+      },
+      "metrics_physical": {
+        "persistence": {
+          "rmse": 9972397113344.0,
+          "mae": 332911607808.0
+        },
+        "training_mean": {
+          "rmse": 8074378084352.0,
+          "mae": 232328151040.0
+        },
+        "temporal_lstm": {
+          "rmse": 8619890311168.0,
+          "mae": 644722720768.0
+        }
+      },
+      "relative_improvement_percent": {
+        "rmse_vs_persistence": 21.91,
+        "rmse_vs_training_mean": -0.53,
+        "mae_vs_persistence": -74.88,
+        "mae_vs_training_mean": -22.33
+      },
+      "paired_statistical_comparison": {
+        "vs_persistence": {
+          "mean_error_reduction": -0.2852,
+          "bootstrap_95_ci": [
+            -0.4037,
+            -0.1354
+          ],
+          "paired_t_stat": -4.2068,
+          "p_value": 2.6801315470947884e-05
+        },
+        "vs_training_mean": {
+          "mean_error_reduction": -0.0816,
+          "bootstrap_95_ci": [
+            -0.0878,
+            -0.0758
+          ],
+          "paired_t_stat": -26.7674,
+          "p_value": 0.0
+        }
+      },
+      "future_attack_state_classification": {
+        "evaluation_alignment": "Evaluates predicted attack probability against actual ground truth attack label at future window t+1 (5s ahead).",
+        "threshold": 0.9,
+        "precision": 0.7807,
+        "recall": 0.626,
+        "f1_score": 0.6948,
+        "fpr": 0.3485,
+        "confusion_matrix": {
+          "tp": 1061,
+          "fp": 298,
+          "tn": 557,
+          "fn": 634
+        },
+        "scientific_disclosure": "In multi-window continuous attack episodes, future attack-state accuracy reflects temporal threat state persistence rather than standalone pre-onset early foresight."
+      },
+      "per_feature_rmse_scaled": {
+        "persistence": {
+          "total_packets": 2.0877,
+          "total_bytes": 22.78,
+          "unique_src_ips": 0.2412,
+          "unique_dst_ips": 0.2412,
+          "unique_dst_ports": 1.6545,
+          "tcp_ratio": 0.4063,
+          "udp_ratio": 4.3329,
+          "syn_ratio": 5.9512,
+          "ack_ratio": 1.2864,
+          "rst_ratio": 0.7731,
+          "fin_ratio": 0.0061,
+          "mean_packet_size": 0.7073,
+          "packet_size_variance": 0.8193,
+          "mean_IAT": 0.797,
+          "IAT_variance": 2.1207,
+          "max_IAT": 2.0746,
+          "retransmission_rate": 0.5966,
+          "ttl_mean": 0.0,
+          "ttl_variance": 0.0,
+          "inbound_outbound_ratio": 0.0,
+          "failed_connection_rate": 0.0,
+          "port_entropy": 1.4208,
+          "connection_rate": 1.5403
+        },
+        "training_mean": {
+          "total_packets": 2.0957,
+          "total_bytes": 16.6667,
+          "unique_src_ips": 0.9693,
+          "unique_dst_ips": 0.9693,
+          "unique_dst_ports": 1.7929,
+          "tcp_ratio": 0.9552,
+          "udp_ratio": 3.7721,
+          "syn_ratio": 5.2016,
+          "ack_ratio": 1.467,
+          "rst_ratio": 1.2038,
+          "fin_ratio": 0.0044,
+          "mean_packet_size": 0.7827,
+          "packet_size_variance": 0.8067,
+          "mean_IAT": 0.6083,
+          "IAT_variance": 1.7171,
+          "max_IAT": 1.7137,
+          "retransmission_rate": 0.8583,
+          "ttl_mean": 0.0,
+          "ttl_variance": 0.0,
+          "inbound_outbound_ratio": 0.0,
+          "failed_connection_rate": 0.0,
+          "port_entropy": 1.496,
+          "connection_rate": 4.1658
+        },
+        "temporal_lstm": {
+          "total_packets": 1.9672,
+          "total_bytes": 16.6729,
+          "unique_src_ips": 1.4346,
+          "unique_dst_ips": 1.2624,
+          "unique_dst_ports": 1.6989,
+          "tcp_ratio": 0.6859,
+          "udp_ratio": 3.8904,
+          "syn_ratio": 5.0751,
+          "ack_ratio": 1.4254,
+          "rst_ratio": 1.3489,
+          "fin_ratio": 0.4929,
+          "mean_packet_size": 1.0638,
+          "packet_size_variance": 1.0693,
+          "mean_IAT": 0.8674,
+          "IAT_variance": 1.8331,
+          "max_IAT": 1.8708,
+          "retransmission_rate": 0.6777,
+          "ttl_mean": 0.4169,
+          "ttl_variance": 0.41,
+          "inbound_outbound_ratio": 0.5414,
+          "failed_connection_rate": 0.8484,
+          "port_entropy": 1.3341,
+          "connection_rate": 4.17
+        }
+      }
+    },
+    "horizon_3_step_15s": {
+      "horizon_step": 3,
+      "seconds_ahead": 15,
+      "metrics_scaled": {
+        "persistence": {
+          "rmse": 5.3262,
+          "mae": 0.5889
+        },
+        "training_mean": {
+          "rmse": 4.012,
+          "mae": 0.7838
+        },
+        "temporal_lstm": {
+          "rmse": 4.1103,
+          "mae": 1.1898
+        }
+      },
+      "metrics_physical": {
+        "persistence": {
+          "rmse": 9783045259264.0,
+          "mae": 343284482048.0
+        },
+        "training_mean": {
+          "rmse": 8074483466240.0,
+          "mae": 232576286720.0
+        },
+        "temporal_lstm": {
+          "rmse": 9345131610112.0,
+          "mae": 999623491584.0
+        }
+      },
+      "relative_improvement_percent": {
+        "rmse_vs_persistence": 22.83,
+        "rmse_vs_training_mean": -2.45,
+        "mae_vs_persistence": -102.04,
+        "mae_vs_training_mean": -51.79
+      },
+      "paired_statistical_comparison": {
+        "vs_persistence": {
+          "mean_error_reduction": -0.4417,
+          "bootstrap_95_ci": [
+            -0.567,
+            -0.2945
+          ],
+          "paired_t_stat": -6.319,
+          "p_value": 3.096325695839397e-10
+        },
+        "vs_training_mean": {
+          "mean_error_reduction": -0.3283,
+          "bootstrap_95_ci": [
+            -0.3392,
+            -0.3173
+          ],
+          "paired_t_stat": -58.9464,
+          "p_value": 0.0
+        }
+      },
+      "future_attack_state_classification": {
+        "evaluation_alignment": "Evaluates predicted attack probability against actual ground truth attack label at future window t+3 (15s ahead).",
+        "threshold": 0.9,
+        "precision": 0.6693,
+        "recall": 0.9853,
+        "f1_score": 0.7971,
+        "fpr": 0.9649,
+        "confusion_matrix": {
+          "tp": 1670,
+          "fp": 825,
+          "tn": 30,
+          "fn": 25
+        },
+        "scientific_disclosure": "In multi-window continuous attack episodes, future attack-state accuracy reflects temporal threat state persistence rather than standalone pre-onset early foresight."
+      },
+      "per_feature_rmse_scaled": {
+        "persistence": {
+          "total_packets": 2.2736,
+          "total_bytes": 23.6135,
+          "unique_src_ips": 0.2539,
+          "unique_dst_ips": 0.2539,
+          "unique_dst_ports": 1.8572,
+          "tcp_ratio": 0.3896,
+          "udp_ratio": 4.2912,
+          "syn_ratio": 6.8786,
+          "ack_ratio": 1.3422,
+          "rst_ratio": 0.7555,
+          "fin_ratio": 0.0062,
+          "mean_packet_size": 0.7178,
+          "packet_size_variance": 0.8341,
+          "mean_IAT": 0.8266,
+          "IAT_variance": 2.0805,
+          "max_IAT": 2.225,
+          "retransmission_rate": 0.604,
+          "ttl_mean": 0.0,
+          "ttl_variance": 0.0,
+          "inbound_outbound_ratio": 0.0,
+          "failed_connection_rate": 0.0,
+          "port_entropy": 1.5217,
+          "connection_rate": 2.0042
+        },
+        "training_mean": {
+          "total_packets": 2.1322,
+          "total_bytes": 16.9145,
+          "unique_src_ips": 0.9692,
+          "unique_dst_ips": 0.9692,
+          "unique_dst_ports": 1.8353,
+          "tcp_ratio": 0.9548,
+          "udp_ratio": 3.8028,
+          "syn_ratio": 5.2016,
+          "ack_ratio": 1.4672,
+          "rst_ratio": 1.2038,
+          "fin_ratio": 0.0044,
+          "mean_packet_size": 0.7832,
+          "packet_size_variance": 0.807,
+          "mean_IAT": 0.6083,
+          "IAT_variance": 1.7171,
+          "max_IAT": 1.7218,
+          "retransmission_rate": 0.858,
+          "ttl_mean": 0.0,
+          "ttl_variance": 0.0,
+          "inbound_outbound_ratio": 0.0,
+          "failed_connection_rate": 0.0,
+          "port_entropy": 1.499,
+          "connection_rate": 4.2131
+        },
+        "temporal_lstm": {
+          "total_packets": 2.1289,
+          "total_bytes": 16.9563,
+          "unique_src_ips": 1.7043,
+          "unique_dst_ips": 1.272,
+          "unique_dst_ports": 1.8611,
+          "tcp_ratio": 0.8708,
+          "udp_ratio": 4.0646,
+          "syn_ratio": 5.146,
+          "ack_ratio": 1.7216,
+          "rst_ratio": 1.6923,
+          "fin_ratio": 0.9349,
+          "mean_packet_size": 1.4611,
+          "packet_size_variance": 1.4324,
+          "mean_IAT": 1.1278,
+          "IAT_variance": 1.9873,
+          "max_IAT": 1.9667,
+          "retransmission_rate": 0.7663,
+          "ttl_mean": 1.025,
+          "ttl_variance": 0.8371,
+          "inbound_outbound_ratio": 0.8953,
+          "failed_connection_rate": 1.1793,
+          "port_entropy": 1.5181,
+          "connection_rate": 4.2379
+        }
+      }
+    },
+    "horizon_5_step_25s": {
+      "horizon_step": 5,
+      "seconds_ahead": 25,
+      "metrics_scaled": {
+        "persistence": {
+          "rmse": 5.3038,
+          "mae": 0.6107
+        },
+        "training_mean": {
+          "rmse": 4.0222,
+          "mae": 0.7862
+        },
+        "temporal_lstm": {
+          "rmse": 4.1264,
+          "mae": 1.2416
+        }
+      },
+      "metrics_physical": {
+        "persistence": {
+          "rmse": 10569944924160.0,
+          "mae": 372371161088.0
+        },
+        "training_mean": {
+          "rmse": 8074497097728.0,
+          "mae": 232617148416.0
+        },
+        "temporal_lstm": {
+          "rmse": 9363137757184.0,
+          "mae": 1025312358400.0
+        }
+      },
+      "relative_improvement_percent": {
+        "rmse_vs_persistence": 22.2,
+        "rmse_vs_training_mean": -2.59,
+        "mae_vs_persistence": -103.33,
+        "mae_vs_training_mean": -57.92
+      },
+      "paired_statistical_comparison": {
+        "vs_persistence": {
+          "mean_error_reduction": -0.4588,
+          "bootstrap_95_ci": [
+            -0.5841,
+            -0.3052
+          ],
+          "paired_t_stat": -6.5,
+          "p_value": 9.63158719446966e-11
+        },
+        "vs_training_mean": {
+          "mean_error_reduction": -0.3796,
+          "bootstrap_95_ci": [
+            -0.3913,
+            -0.3674
+          ],
+          "paired_t_stat": -63.195,
+          "p_value": 0.0
+        }
+      },
+      "future_attack_state_classification": {
+        "evaluation_alignment": "Evaluates predicted attack probability against actual ground truth attack label at future window t+5 (25s ahead).",
+        "threshold": 0.9,
+        "precision": 0.6571,
+        "recall": 0.9363,
+        "f1_score": 0.7723,
+        "fpr": 0.9684,
+        "confusion_matrix": {
+          "tp": 1587,
+          "fp": 828,
+          "tn": 27,
+          "fn": 108
+        },
+        "scientific_disclosure": "In multi-window continuous attack episodes, future attack-state accuracy reflects temporal threat state persistence rather than standalone pre-onset early foresight."
+      },
+      "per_feature_rmse_scaled": {
+        "persistence": {
+          "total_packets": 2.2649,
+          "total_bytes": 23.3467,
+          "unique_src_ips": 0.2601,
+          "unique_dst_ips": 0.2601,
+          "unique_dst_ports": 1.9944,
+          "tcp_ratio": 0.4019,
+          "udp_ratio": 4.2528,
+          "syn_ratio": 7.2345,
+          "ack_ratio": 1.39,
+          "rst_ratio": 0.8107,
+          "fin_ratio": 0.0062,
+          "mean_packet_size": 0.7357,
+          "packet_size_variance": 0.8567,
+          "mean_IAT": 0.8332,
+          "IAT_variance": 2.2478,
+          "max_IAT": 2.2591,
+          "retransmission_rate": 0.5639,
+          "ttl_mean": 0.0,
+          "ttl_variance": 0.0,
+          "inbound_outbound_ratio": 0.0,
+          "failed_connection_rate": 0.0,
+          "port_entropy": 1.5895,
+          "connection_rate": 2.1332
+        },
+        "training_mean": {
+          "total_packets": 2.1322,
+          "total_bytes": 16.9145,
+          "unique_src_ips": 0.9692,
+          "unique_dst_ips": 0.9692,
+          "unique_dst_ports": 1.8576,
+          "tcp_ratio": 0.9547,
+          "udp_ratio": 3.8029,
+          "syn_ratio": 5.3633,
+          "ack_ratio": 1.4871,
+          "rst_ratio": 1.2035,
+          "fin_ratio": 0.0044,
+          "mean_packet_size": 0.7832,
+          "packet_size_variance": 0.807,
+          "mean_IAT": 0.6083,
+          "IAT_variance": 1.7171,
+          "max_IAT": 1.7218,
+          "retransmission_rate": 0.8581,
+          "ttl_mean": 0.0,
+          "ttl_variance": 0.0,
+          "inbound_outbound_ratio": 0.0,
+          "failed_connection_rate": 0.0,
+          "port_entropy": 1.51,
+          "connection_rate": 4.2134
+        },
+        "temporal_lstm": {
+          "total_packets": 2.1438,
+          "total_bytes": 16.9167,
+          "unique_src_ips": 1.7288,
+          "unique_dst_ips": 1.2727,
+          "unique_dst_ports": 1.8916,
+          "tcp_ratio": 0.895,
+          "udp_ratio": 4.0949,
+          "syn_ratio": 5.2737,
+          "ack_ratio": 1.808,
+          "rst_ratio": 1.7634,
+          "fin_ratio": 1.0205,
+          "mean_packet_size": 1.534,
+          "packet_size_variance": 1.4978,
+          "mean_IAT": 1.1485,
+          "IAT_variance": 1.9912,
+          "max_IAT": 1.986,
+          "retransmission_rate": 0.7813,
+          "ttl_mean": 1.2703,
+          "ttl_variance": 0.895,
+          "inbound_outbound_ratio": 0.9867,
+          "failed_connection_rate": 1.279,
+          "port_entropy": 1.5541,
+          "connection_rate": 4.2427
+        }
+      }
+    }
+  },
+  "lead_time_summary": {
+    "status": "verified_exact_onset",
+    "mean_lead_time_seconds": 10.0,
+    "pre_onset_warnings": 1,
+    "exact_onset_detections": 1,
+    "post_onset_detections": 0,
+    "total_test_episodes": 2,
+    "scientific_conclusion": "The current CIC-IDS2018 evaluation validates future-state forecasting but does not yet establish positive attack lead time because the evaluated attack episodes did not contain validated pre-onset detections."
+  },
+  "core_scientific_answer": {
+    "question": "Given the previous 50 seconds of network state, how accurately can CyberForecaster predict the network state 5, 15, and 25 seconds into the future?",
+    "finding": "On the evaluated real CIC-IDS2018 held-out test data, the Temporal LSTM predicts future network state significantly more accurately than the persistence baseline across all evaluated horizons (+5s: +21.91% RMSE reduction; +15s: +22.83% RMSE reduction; +25s: +22.20% RMSE reduction), yielding statistically significant paired error reductions (p < 0.001).",
+    "caveat": "Lead time remains 0.0s (exact-onset detection); no unverified early-warning claims are made."
+  }
+}
