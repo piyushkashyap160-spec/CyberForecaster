@@ -1,0 +1,25 @@
+{
+  "model_name": "Temporal LSTM World Model (Real CIC-IDS2018 Checkpoint)",
+  "checkpoint_file": "lstm_world_model_real_cicids.pt",
+  "scaler_file": "scaler_real_cicids.joblib",
+  "dataset": "CSE-CIC-IDS2018 (Friday-02-03-2018_TrafficForML_CICFlowMeter.csv)",
+  "feature_dimension": 23,
+  "sequence_length": 10,
+  "forecast_horizon": 5,
+  "window_seconds": 5.0,
+  "architecture": {
+    "type": "TemporalLSTMWorldModel",
+    "input_size": 23,
+    "hidden_size": 64,
+    "num_layers": 2,
+    "dropout": 0.2,
+    "num_stages": 6
+  },
+  "training": {
+    "seed": 42,
+    "train_split": 0.6,
+    "val_split": 0.2,
+    "test_split": 0.2
+  },
+  "benchmark_script": "training/run_strict_leakage_free_benchmark.py"
+}

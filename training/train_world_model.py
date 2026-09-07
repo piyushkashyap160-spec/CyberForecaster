@@ -45,42 +45,79 @@ def train(config_path: str = "config.yaml", pcap_path: str = None):
 
     window_sec = config['data']['window_seconds']
     seq_len = config['sequence']['sequence_length']
+    forecast_steps = config.get('sequence', {}).get('forecast_horizon', 5)
 
     print(f"Constructing network state time windows ({window_sec}s)...")
     states = build_network_states(df, window_seconds=window_sec)
     print(f"Total time windows generated: {len(states)}")
 
+    # Strict Zero-Leakage: Chronologically partition RAW states BEFORE creating rolling sequences
+    total_states = len(states)
+    train_split = config['training'].get('train_split', 0.70)
+    val_split = config['training'].get('val_split', 0.15)
+
+    train_end = int(total_states * train_split)
+    val_end = train_end + int(total_states * val_split)
+
+    train_states = states[:train_end]
+    val_states = states[train_end:val_end]
+    test_states = states[val_end:]
+    print(f"State blocks -> Train: {len(train_states)}, Val: {len(val_states)}, Test: {len(test_states)}")
+
     min_required_states = seq_len + forecast_steps
-    if len(states) < min_required_states:
-        print(f"Warning: Insufficient time windows generated ({len(states)} < {min_required_states}) for sequence length {seq_len}. Skipping training.")
+    if len(train_states) < min_required_states:
+        print(f"Warning: Insufficient train states ({len(train_states)} < {min_required_states}) for sequence length {seq_len}. Skipping training.")
         return
 
-    print(f"Creating multi-step sequences (unroll_steps={forecast_steps})...")
-    X, y_state, y_attack, y_stage, _ = create_sequences(states, sequence_length=seq_len, forecast_steps=forecast_steps)
+    print(f"Creating multi-step sequences within independent temporal blocks (unroll_steps={forecast_steps})...")
+    X_train, y_state_train, y_attack_train, y_stage_train, _ = create_sequences(
+        train_states, sequence_length=seq_len, forecast_steps=forecast_steps
+    )
 
-    print(f"Sequences shape X: {X.shape}, y_state: {y_state.shape}, y_attack: {y_attack.shape}")
+    if len(val_states) >= min_required_states:
+        X_val, y_state_val, y_attack_val, y_stage_val, _ = create_sequences(
+            val_states, sequence_length=seq_len, forecast_steps=forecast_steps
+        )
+    else:
+        D_feat = config['model'].get('input_size', 23)
+        X_val = np.empty((0, seq_len, D_feat), dtype=np.float32)
+        y_state_val = np.empty((0, forecast_steps, D_feat), dtype=np.float32)
+        y_attack_val = np.empty((0, forecast_steps), dtype=np.float32)
+        y_stage_val = np.empty((0, forecast_steps), dtype=np.int64)
 
-    # Chronological Split (No Leakage)
-    total_samples = len(X)
-    train_end = int(total_samples * config['training']['train_split'])
-    val_end = train_end + int(total_samples * config['training']['val_split'])
+    if len(test_states) >= min_required_states:
+        X_test, y_state_test, y_attack_test, y_stage_test, _ = create_sequences(
+            test_states, sequence_length=seq_len, forecast_steps=forecast_steps
+        )
+    else:
+        D_feat = config['model'].get('input_size', 23)
+        X_test = np.empty((0, seq_len, D_feat), dtype=np.float32)
+        y_state_test = np.empty((0, forecast_steps, D_feat), dtype=np.float32)
+        y_attack_test = np.empty((0, forecast_steps), dtype=np.float32)
+        y_stage_test = np.empty((0, forecast_steps), dtype=np.int64)
 
-    X_train, y_state_train, y_attack_train, y_stage_train = X[:train_end], y_state[:train_end], y_attack[:train_end], y_stage[:train_end]
-    X_val, y_state_val, y_attack_val, y_stage_val = X[train_end:val_end], y_state[train_end:val_end], y_attack[train_end:val_end], y_stage[train_end:val_end]
-    X_test, y_state_test, y_attack_test, y_stage_test = X[val_end:], y_state[val_end:], y_attack[val_end:], y_stage[val_end:]
+    print(f"Independent sequence shapes -> Train: {X_train.shape}, Val: {X_val.shape}, Test: {X_test.shape}")
 
-    # Scale state vectors based on train split only
+    # Strict Scaler Discipline: Fit scaler strictly on Train split only
     scaler = StateScaler()
     X_train_scaled = scaler.fit_transform(X_train)
-    
-    # Scale multi-step y_state
+
     N_train, K_steps, D_feat = y_state_train.shape
     y_state_train_scaled = scaler.transform(y_state_train.reshape(-1, D_feat)).reshape(N_train, K_steps, D_feat)
-    y_state_val_scaled = scaler.transform(y_state_val.reshape(-1, D_feat)).reshape(len(y_state_val), K_steps, D_feat)
-    y_state_test_scaled = scaler.transform(y_state_test.reshape(-1, D_feat)).reshape(len(y_state_test), K_steps, D_feat)
 
-    X_val_scaled = scaler.transform(X_val)
-    X_test_scaled = scaler.transform(X_test)
+    if len(X_val) > 0:
+        X_val_scaled = scaler.transform(X_val)
+        y_state_val_scaled = scaler.transform(y_state_val.reshape(-1, D_feat)).reshape(len(y_state_val), K_steps, D_feat)
+    else:
+        X_val_scaled = np.empty((0, seq_len, D_feat), dtype=np.float32)
+        y_state_val_scaled = np.empty((0, K_steps, D_feat), dtype=np.float32)
+
+    if len(X_test) > 0:
+        X_test_scaled = scaler.transform(X_test)
+        y_state_test_scaled = scaler.transform(y_state_test.reshape(-1, D_feat)).reshape(len(y_state_test), K_steps, D_feat)
+    else:
+        X_test_scaled = np.empty((0, seq_len, D_feat), dtype=np.float32)
+        y_state_test_scaled = np.empty((0, K_steps, D_feat), dtype=np.float32)
 
     scaler_path = config['model']['scaler_path']
     scaler.save(scaler_path)
@@ -92,12 +129,15 @@ def train(config_path: str = "config.yaml", pcap_path: str = None):
         torch.tensor(y_attack_train, dtype=torch.float32),
         torch.tensor(y_stage_train, dtype=torch.long)
     )
-    val_dataset = TensorDataset(
-        torch.tensor(X_val_scaled, dtype=torch.float32),
-        torch.tensor(y_state_val_scaled, dtype=torch.float32),
-        torch.tensor(y_attack_val, dtype=torch.float32),
-        torch.tensor(y_stage_val, dtype=torch.long)
-    )
+    if len(X_val) > 0:
+        val_dataset = TensorDataset(
+            torch.tensor(X_val_scaled, dtype=torch.float32),
+            torch.tensor(y_state_val_scaled, dtype=torch.float32),
+            torch.tensor(y_attack_val, dtype=torch.float32),
+            torch.tensor(y_stage_val, dtype=torch.long)
+        )
+    else:
+        val_dataset = train_dataset
 
     batch_size = config['training']['batch_size']
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
@@ -145,14 +185,14 @@ def train(config_path: str = "config.yaml", pcap_path: str = None):
             b_y_stage = b_y_stage.to(device)
 
             optimizer.zero_grad()
-            
+
             total_step_loss = 0.0
             curr_seq = b_x
 
             # Unroll K steps ahead with scheduled sampling
             for k in range(forecast_steps):
                 p_state, p_attack, p_stage = model(curr_seq)
-                
+
                 gt_state_k = b_y_state[:, k, :]
                 gt_attack_k = b_y_attack[:, k].unsqueeze(1)
                 gt_stage_k = b_y_stage[:, k]

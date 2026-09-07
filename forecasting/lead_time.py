@@ -1,20 +1,44 @@
 import numpy as np
-from typing import Dict, List, Tuple
+import pandas as pd
+from typing import Dict, List, Tuple, Optional, Any
+from datetime import datetime, timezone
+
+def _to_timestamp_seconds(ts: Any) -> float:
+    """Converts a timestamp (datetime, pd.Timestamp, str, or float) to epoch seconds."""
+    if isinstance(ts, (int, float)):
+        return float(ts)
+    if isinstance(ts, pd.Timestamp):
+        return ts.timestamp()
+    if isinstance(ts, datetime):
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return ts.timestamp()
+    if isinstance(ts, str):
+        try:
+            dt = pd.to_datetime(ts)
+            return dt.timestamp()
+        except Exception:
+            pass
+    return 0.0
 
 def compute_forecast_lead_time(
     y_attack_seq: np.ndarray,
     prob_predictions: np.ndarray,
     window_seconds: float = 5.0,
-    threshold: float = 0.5
-) -> Dict[str, float]:
+    threshold: float = 0.5,
+    timestamps: Optional[List[Any]] = None
+) -> Dict[str, Any]:
     """
     Computes the Forecast Lead Time (early warning metric):
     The time delta (in seconds) between when model attack probability first crosses
     the decision threshold and the actual onset timestamp of the attack episode.
 
-    Positive lead time -> early prediction before attack onset.
-    Zero lead time -> detection at exact attack onset.
-    Negative lead time -> detection delay after attack onset.
+    - Positive lead time (> 0s) -> genuine early prediction before attack onset.
+    - Zero lead time (== 0s) -> detection at exact attack onset.
+    - Negative lead time (< 0s) -> detection delay after attack has already begun.
+
+    Post-onset detections are strictly penalized with negative lead time and are
+    never counted as positive pre-onset early warnings.
     """
     y_attack = (y_attack_seq >= 0.5).astype(int)
     probs = np.array(prob_predictions, dtype=float)
@@ -41,17 +65,25 @@ def compute_forecast_lead_time(
             "median_lead_time_seconds": 0.0,
             "max_lead_time_seconds": 0.0,
             "episodes_detected": 0,
+            "pre_onset_warnings": 0,
+            "exact_onset_detections": 0,
+            "post_onset_detections": 0,
             "total_episodes": 0
         }
 
     lead_times_seconds: List[float] = []
     detected_count = 0
+    pre_onset_count = 0
+    exact_onset_count = 0
+    post_onset_count = 0
+
+    use_real_ts = timestamps is not None and len(timestamps) >= len(y_attack)
 
     for ep_idx, (onset_idx, end_idx) in enumerate(episodes):
         prev_end = episodes[ep_idx - 1][1] if ep_idx > 0 else -1
         # Search backwards up to 10 windows, strictly clamped to after previous episode end
         search_start = max(0, onset_idx - 10, prev_end + 1)
-        
+
         trigger_idx = None
         for idx in range(search_start, end_idx + 1):
             if probs[idx] >= threshold:
@@ -60,7 +92,30 @@ def compute_forecast_lead_time(
 
         if trigger_idx is not None:
             detected_count += 1
-            lead_sec = float(onset_idx - trigger_idx) * window_seconds
+            if use_real_ts:
+                t_onset = _to_timestamp_seconds(timestamps[onset_idx])
+                t_trigger = _to_timestamp_seconds(timestamps[trigger_idx])
+                if trigger_idx < onset_idx:
+                    lead_sec = max(0.0, float(t_onset - t_trigger))
+                    pre_onset_count += 1
+                elif trigger_idx == onset_idx:
+                    lead_sec = 0.0
+                    exact_onset_count += 1
+                else:
+                    # Post-onset delay
+                    lead_sec = -abs(float(t_trigger - t_onset))
+                    post_onset_count += 1
+            else:
+                if trigger_idx < onset_idx:
+                    lead_sec = float(onset_idx - trigger_idx) * window_seconds
+                    pre_onset_count += 1
+                elif trigger_idx == onset_idx:
+                    lead_sec = 0.0
+                    exact_onset_count += 1
+                else:
+                    lead_sec = -float(trigger_idx - onset_idx) * window_seconds
+                    post_onset_count += 1
+
             lead_times_seconds.append(lead_sec)
 
     if not lead_times_seconds:
@@ -69,6 +124,9 @@ def compute_forecast_lead_time(
             "median_lead_time_seconds": 0.0,
             "max_lead_time_seconds": 0.0,
             "episodes_detected": 0,
+            "pre_onset_warnings": 0,
+            "exact_onset_detections": 0,
+            "post_onset_detections": 0,
             "total_episodes": len(episodes)
         }
 
@@ -77,5 +135,8 @@ def compute_forecast_lead_time(
         "median_lead_time_seconds": round(float(np.median(lead_times_seconds)), 2),
         "max_lead_time_seconds": round(float(np.max(lead_times_seconds)), 2),
         "episodes_detected": detected_count,
+        "pre_onset_warnings": pre_onset_count,
+        "exact_onset_detections": exact_onset_count,
+        "post_onset_detections": post_onset_count,
         "total_episodes": len(episodes)
     }
